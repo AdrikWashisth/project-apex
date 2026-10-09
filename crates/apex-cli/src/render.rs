@@ -1,6 +1,8 @@
 //! Human-readable rendering of tasks, events and reports.
 
-use apex_protocol::{EventKind, Task, TaskStatus};
+use apex_protocol::{Event, EventKind, Task, TaskStatus};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 
 /// Truncate a single-line preview of tool arguments.
 fn preview(value: &serde_json::Value, max: usize) -> String {
@@ -66,6 +68,134 @@ pub fn render_event(event: &apex_protocol::Event) -> String {
         EventKind::Error { message } => format!("  ✗ {message}"),
         EventKind::Log { level, message } => format!("  [{level}] {message}"),
         _ => String::new(),
+    }
+}
+
+/// Symbol shown next to a task's status.
+pub fn status_label(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Completed => "✓",
+        TaskStatus::Failed => "✗",
+        TaskStatus::Cancelled => "⊘",
+        TaskStatus::Running => "●",
+        TaskStatus::Verifying => "◐",
+        TaskStatus::WaitingApproval => "?",
+        TaskStatus::Pending => "○",
+    }
+}
+
+/// Shorten a task id for display, keeping it recognisable.
+pub fn short_id(id: &str) -> String {
+    if id.len() <= 18 {
+        id.to_string()
+    } else {
+        format!("{}…{}", &id[..8], &id[id.len() - 6..])
+    }
+}
+
+/// Turn one event into zero or more styled display lines.
+pub fn event_lines(event: &Event) -> Vec<Line<'static>> {
+    let time = event.timestamp.get(11..19).unwrap_or("").to_string();
+    let prefix = Span::styled(format!("{time} "), Style::default().fg(Color::DarkGray));
+
+    match &event.kind {
+        EventKind::ToolStarted {
+            name, arguments, ..
+        } => vec![Line::from(vec![
+            prefix,
+            Span::styled("⚙ ", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!("{} {}", name, preview(arguments, 100)),
+                Style::default(),
+            ),
+        ])],
+        EventKind::ToolFinished {
+            name,
+            success,
+            summary,
+            ..
+        } => {
+            let mark = if *success { "✓" } else { "✗" };
+            let colour = if *success { Color::Green } else { Color::Red };
+            vec![Line::from(vec![
+                prefix,
+                Span::styled(format!("{mark} "), Style::default().fg(colour)),
+                Span::styled(format!("{name}: {summary}"), Style::default()),
+            ])]
+        }
+        EventKind::StatusChanged { status, reason } => {
+            let mut spans = vec![
+                prefix,
+                Span::styled("→ ", Style::default().fg(Color::Gray)),
+                Span::styled(format!("{status:?}"), Style::default().fg(Color::Cyan)),
+            ];
+            if let Some(reason) = reason {
+                spans.push(Span::styled(
+                    format!(" ({reason})"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+            vec![Line::from(spans)]
+        }
+        EventKind::Message { message } => {
+            let text = message.content.clone().unwrap_or_default();
+            if message.tool_calls.is_empty() {
+                vec![Line::from(vec![
+                    prefix,
+                    Span::styled(text.trim().to_string(), Style::default()),
+                ])]
+            } else {
+                Vec::new()
+            }
+        }
+        EventKind::Error { message } => vec![Line::from(vec![
+            prefix,
+            Span::styled("✗ ", Style::default().fg(Color::Red)),
+            Span::styled(message.clone(), Style::default().fg(Color::Red)),
+        ])],
+        EventKind::Verification { passed, checks } => {
+            let passed_count = checks.iter().filter(|c| c.passed).count();
+            let mark = if *passed { "✓" } else { "✗" };
+            let colour = if *passed { Color::Green } else { Color::Red };
+            vec![Line::from(vec![
+                prefix,
+                Span::styled(
+                    format!("{mark} verification {passed_count}/{}", checks.len()),
+                    Style::default().fg(colour),
+                ),
+            ])]
+        }
+        EventKind::SubtaskStarted { agent_id, wave, .. } => vec![Line::from(vec![
+            prefix,
+            Span::styled(
+                format!("▶ subtask {agent_id} (wave {wave})"),
+                Style::default().fg(Color::Magenta),
+            ),
+        ])],
+        EventKind::SubtaskFinished {
+            agent_id, status, ..
+        } => {
+            let colour = match status.as_str() {
+                "completed" => Color::Green,
+                "failed" | "cancelled" => Color::Red,
+                _ => Color::Yellow,
+            };
+            vec![Line::from(vec![
+                prefix,
+                Span::styled(
+                    format!("■ subtask {agent_id} {status}"),
+                    Style::default().fg(colour),
+                ),
+            ])]
+        }
+        EventKind::PlanScheduled { waves, .. } => vec![Line::from(vec![
+            prefix,
+            Span::styled(
+                format!("plan scheduled in {waves} wave(s)"),
+                Style::default().fg(Color::Cyan),
+            ),
+        ])],
+        _ => Vec::new(),
     }
 }
 

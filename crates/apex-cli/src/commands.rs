@@ -42,6 +42,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
             agent,
             agents,
             parallel,
+            writes,
             workflow,
             diff,
             no_wait,
@@ -49,7 +50,12 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
             let mut client = daemon::connect_or_start(&config).await?;
             // Resolve the execution mode and any team/workflow/plan up front so
             // a bad configuration fails before the task is created.
-            let execution = build_execution(agents.as_deref(), parallel, workflow.as_deref())?;
+            let execution = build_execution(
+                agents.as_deref(),
+                parallel,
+                writes.as_deref(),
+                workflow.as_deref(),
+            )?;
             run_task(
                 &mut client,
                 &objective,
@@ -213,6 +219,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
+        Command::Tui => crate::tui::run(config).await,
         Command::Diff { task_id } => {
             let mut client = daemon::connect_or_start(&config).await?;
             let task_id = resolve_task_id(&mut client, task_id).await?;
@@ -276,6 +283,7 @@ struct Execution {
 fn build_execution(
     agents: Option<&str>,
     parallel: bool,
+    writes: Option<&str>,
     workflow: Option<&str>,
 ) -> Result<Execution> {
     use apex_orchestrator::WorkflowDefinition;
@@ -305,6 +313,18 @@ fn build_execution(
         } else {
             TeamStrategy::Sequential
         };
+        if let Some(globs) = writes {
+            let paths: Vec<String> = globs
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
+            if paths.is_empty() {
+                anyhow::bail!("--writes needs at least one glob, e.g. --writes 'src/**'");
+            }
+            spec.writes = Some(paths);
+        }
         return Ok(Execution {
             mode: ExecutionMode::ManualMulti,
             team: Some(spec),

@@ -25,6 +25,10 @@ pub struct TeamSpec {
     /// Model override applied to every team member.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Write scope applied to every team member. Required for `--parallel`
+    /// unless every member is read-only or declares its own scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writes: Option<Vec<String>>,
 }
 
 impl TeamSpec {
@@ -34,6 +38,7 @@ impl TeamSpec {
             agents: agents.into_iter().map(Into::into).collect(),
             strategy: TeamStrategy::Sequential,
             model: None,
+            writes: None,
         }
     }
 
@@ -79,5 +84,6 @@ mod tests {
         let spec: TeamSpec = serde_json::from_str(r#"{"agents":["a","b"]}"#).unwrap();
         assert_eq!(spec.agents.len(), 2);
         assert_eq!(spec.strategy, TeamStrategy::Sequential);
+        assert!(spec.writes.is_none());
     }
 }

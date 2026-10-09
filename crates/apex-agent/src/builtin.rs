@@ -31,6 +31,7 @@ pub fn default_agent() -> AgentManifest {
         ],
         models: ModelPrefs::default(),
         tools: ToolPrefs::default(),
+        writes: Default::default(),
         execution: Default::default(),
         memory: MemoryPrefs::default(),
         evaluation: vec!["build-and-test".into()],

@@ -28,6 +28,7 @@ apex-models = { path = "crates/apex-models" }
 apex-tools = { path = "crates/apex-tools" }
 apex-memory = { path = "crates/apex-memory" }
 apex-agent = { path = "crates/apex-agent" }
+apex-cli = { path = "crates/apex-cli" }
 apex-orchestrator = { path = "crates/apex-orchestrator" }
 apex-verification = { path = "crates/apex-verification" }
 apex-runtime = { path = "crates/apex-runtime" }
@@ -36,6 +37,8 @@ anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.28"
+ratatui = "0.30"
 dirs = "5"
 futures = "0.3"
 glob = "0.3"

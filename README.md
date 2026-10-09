@@ -43,6 +43,46 @@ cargo build --release
 # the binary is at target/release/apex (apex.exe on Windows)
 ```
 
+## Install
+
+One command. The installer puts Rust, the binary and your PATH in order, and
+leaves your configuration, agents and task history alone if you re-run it.
+
+**Linux / macOS**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AdrikWashisth/project-apex/main/install.sh | bash
+```
+
+**Windows** (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/AdrikWashisth/project-apex/main/install.ps1 | iex
+```
+
+Or clone and run the script for your platform:
+
+```bash
+git clone https://github.com/AdrikWashisth/project-apex.git
+cd project-apex
+./install.sh          # Linux / macOS
+# .\install.ps1        # Windows
+```
+
+If you already have Rust 1.99 or newer, you can skip all of that:
+
+```bash
+cargo build --release --bin apex
+# binary at target/release/apex (apex.exe on Windows)
+```
+
+Then check the environment and configure a model:
+
+```bash
+apex doctor
+apex models set openai/gpt-4o-mini   # then: export OPENAI_API_KEY=sk-...
+```
+
 ## Quick start
 
 Check the environment:
@@ -128,6 +168,43 @@ apex runtime                Start or attach to the persistent runtime
 ```
 
 Add `--json` to any command for machine-readable output.
+
+## Interfaces
+
+APEX has three frontends, all talking to the same runtime:
+
+| Interface | Command | Use it for |
+| --- | --- | --- |
+| CLI | `apex run "..."` | Scripts, automation, `--json` output |
+| TUI | `apex tui` | Watching a run live, keyboard-driven |
+| VS Code | see `extensions/vscode/` | Editor-integrated diffs and approvals |
+
+### The terminal interface
+
+```bash
+apex tui
+```
+
+A live view of the runtime: tasks on the left, the selected task's event stream
+in the centre, and its plan and subtasks on the right. It polls the runtime,
+so it stays correct even if the task was started from the CLI or another client.
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` | Move through tasks, or scroll the focused pane |
+| `Tab` | Switch focus between Tasks, Events and Plan |
+| `n` | New task |
+| `a` | New task with an agent team (`--agents a,b`) |
+| `w` | Run a workflow (`--workflow file.toml`) |
+| `c` | Cancel the selected task |
+| `d` | Show the selected task's diff |
+| `v` | Run verification on the selected task |
+| `r` | Refresh now |
+| `?` | Show the key help |
+| `q` / `Ctrl-C` | Quit |
+
+The TUI is a frontend. It holds no task state of its own — close it and the
+task keeps running, and reopening it shows the same task from the runtime.
 
 ## Running multiple agents
 

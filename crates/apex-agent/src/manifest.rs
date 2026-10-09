@@ -30,6 +30,18 @@ pub struct ToolPrefs {
     pub denied: Vec<String>,
 }
 
+/// Write scope declared by the agent itself.
+///
+/// A declaration lets two write-capable agents run concurrently when their
+/// scopes are provably disjoint. An empty declaration means "may modify the
+/// whole workspace", which is never safe to parallelise.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WritePrefs {
+    /// Path globs this agent may modify. Empty means the whole workspace.
+    pub paths: Vec<String>,
+}
+
 /// Execution limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -85,6 +97,9 @@ pub struct AgentManifest {
     pub task_types: Vec<String>,
     pub models: ModelPrefs,
     pub tools: ToolPrefs,
+    /// Declared write scope, used for parallel scheduling.
+    #[serde(default)]
+    pub writes: WritePrefs,
     pub execution: ExecutionLimits,
     pub memory: MemoryPrefs,
     /// Evaluation case identifiers used to test the agent.
@@ -103,6 +118,7 @@ impl Default for AgentManifest {
             task_types: Vec::new(),
             models: ModelPrefs::default(),
             tools: ToolPrefs::default(),
+            writes: WritePrefs::default(),
             execution: ExecutionLimits::default(),
             memory: MemoryPrefs::default(),
             evaluation: Vec::new(),
@@ -164,6 +180,16 @@ impl AgentManifest {
             return false;
         }
         self.tools.allowed.is_empty() || self.tools.allowed.iter().any(|t| t == name)
+    }
+
+    /// Paths this agent declares it may modify.
+    pub fn write_scope(&self) -> &[String] {
+        &self.writes.paths
+    }
+
+    /// Whether this agent declares any write scope at all.
+    pub fn declares_write_scope(&self) -> bool {
+        !self.writes.paths.is_empty()
     }
 }
 

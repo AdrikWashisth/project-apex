@@ -45,10 +45,12 @@ async fn requests_still_complete_while_a_task_streams_events() -> Result<()> {
             model: None,
             agent_id: None,
             mode: apex_protocol::ExecutionMode::ManualMulti,
-            team: Some(apex_protocol::TeamSpec::new([
-                "apex-default",
-                "apex-reviewer",
-            ])),
+            team: Some(apex_protocol::TeamSpec {
+                agents: vec!["apex-default".into(), "apex-reviewer".into()],
+                strategy: apex_protocol::TeamStrategy::Sequential,
+                model: None,
+                writes: None,
+            }),
             plan: None,
             workflow: None,
         }),

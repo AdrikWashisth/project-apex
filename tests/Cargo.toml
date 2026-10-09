@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 apex-agent.workspace = true
+apex-cli.workspace = true
 apex-core.workspace = true
 apex-memory.workspace = true
 apex-models.workspace = true

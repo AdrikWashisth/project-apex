@@ -56,7 +56,12 @@ async fn manual_team_runs_and_records_subtasks() -> Result<()> {
         None,
         None,
         ExecutionMode::ManualMulti,
-        Some(TeamSpec::new(["apex-reviewer", "apex-debugger"])),
+        Some(apex_protocol::TeamSpec {
+            agents: vec!["apex-reviewer".into(), "apex-debugger".into()],
+            strategy: apex_protocol::TeamStrategy::Sequential,
+            model: None,
+            writes: None,
+        }),
         None,
         None,
     )?;
@@ -220,6 +225,117 @@ async fn review_only_team_runs_in_a_single_wave() -> Result<()> {
         1,
         "read-only agents cannot conflict and should run concurrently"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_team_without_write_scope_is_refused() -> Result<()> {
+    // Two write-capable agents with no declared scope must not be allowed to
+    // "run in parallel" — the scheduler would serialise them anyway, so the
+    // honest answer is to refuse.
+    let catalog = apex_agent::AgentCatalog::load(None)?;
+    let spec = apex_protocol::TeamSpec {
+        agents: vec!["apex-default".into(), "apex-debugger".into()],
+        strategy: apex_protocol::TeamStrategy::Parallel,
+        model: None,
+        writes: None,
+    };
+    let err = apex_orchestrator::plan_from_team(&spec, "x", &catalog)
+        .expect_err("an unscoped parallel team must be refused");
+    let message = err.to_string();
+    assert!(
+        message.contains("cannot run these team members in parallel"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("apex-default"),
+        "the error should name the offending member, got: {message}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_parallel_team_with_a_shared_scope_runs_in_one_wave() -> Result<()> {
+    // A team's --writes applies to every member, so a shared scope makes the
+    // whole team one wave.
+    let catalog = apex_agent::AgentCatalog::load(None)?;
+    let spec = TeamSpec {
+        agents: vec!["apex-reviewer".into(), "apex-reviewer".into()],
+        strategy: apex_protocol::TeamStrategy::Parallel,
+        model: None,
+        writes: Some(vec!["src/**".into()]),
+    };
+    let plan = apex_orchestrator::plan_from_team(&spec, "x", &catalog)?;
+    let waves = apex_orchestrator::schedule(&plan, Default::default())?;
+    assert_eq!(waves.len(), 1);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disjoint_scopes_make_a_team_genuinely_parallel() -> Result<()> {
+    // Per-step scopes come from a workflow. Provably disjoint scopes are what
+    // actually collapses two write-capable agents into a single wave.
+    let catalog = apex_agent::AgentCatalog::load(None)?;
+    let workflow = apex_orchestrator::WorkflowDefinition::from_toml(
+        r#"
+name = "disjoint"
+description = "Two writers in different directories."
+
+[[steps]]
+id = "src-work"
+agent = "apex-default"
+objective = "Work on the source tree."
+writes = ["src/**"]
+
+[[steps]]
+id = "docs-work"
+agent = "apex-debugger"
+objective = "Work on the docs tree."
+writes = ["docs/**"]
+"#,
+    )?;
+    let plan = apex_orchestrator::workflow_to_plan(&workflow, &catalog)?;
+    let waves = apex_orchestrator::schedule(&plan, Default::default())?;
+    assert_eq!(
+        waves.len(),
+        1,
+        "provably disjoint write scopes must run concurrently"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_team_with_overlapping_scopes_is_refused() -> Result<()> {
+    let catalog = apex_agent::AgentCatalog::load(None)?;
+    let spec = apex_protocol::TeamSpec {
+        agents: vec!["apex-default".into(), "apex-debugger".into()],
+        strategy: apex_protocol::TeamStrategy::Parallel,
+        model: None,
+        writes: Some(vec!["src/**".into()]),
+    };
+    let err = apex_orchestrator::plan_from_team(&spec, "x", &catalog)
+        .expect_err("overlapping scopes must be refused");
+    assert!(
+        err.to_string().contains("overlapping write scopes"),
+        "got: {err}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn read_only_parallel_team_needs_no_scope() -> Result<()> {
+    // Read-only agents can never conflict, so no scope is required.
+    let catalog = apex_agent::AgentCatalog::load(None)?;
+    let spec = apex_protocol::TeamSpec {
+        agents: vec!["apex-reviewer".into(), "apex-reviewer".into()],
+        strategy: apex_protocol::TeamStrategy::Parallel,
+        model: None,
+        writes: None,
+    };
+    let plan = apex_orchestrator::plan_from_team(&spec, "x", &catalog)?;
+    assert_eq!(plan.len(), 2);
+    let waves = apex_orchestrator::schedule(&plan, Default::default())?;
+    assert_eq!(waves.len(), 1);
     Ok(())
 }
 

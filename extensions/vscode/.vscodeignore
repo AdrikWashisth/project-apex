@@ -1,0 +1,6 @@
+.vscode/**
+out/**
+src/**
+node_modules/**
+*.vsix
+media/.DS_Store

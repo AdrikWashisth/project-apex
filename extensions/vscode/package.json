@@ -4,31 +4,54 @@
   "description": "APEX agentic software engineering, powered by the local APEX runtime.",
   "version": "0.1.0",
   "publisher": "apex-ai",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdrikWashisth/project-apex"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "AI",
-    "Programming Languages"
+    "Debuggers",
+    "Other"
   ],
-  "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"
   ],
+  "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "apex",
           "title": "APEX",
-          "icon": "resources/apex.svg"
+          "icon": "media/apex.svg"
+        }
+      ]
+    },
+    "views": {
+      "apex": [
+        {
+          "type": "tree",
+          "id": "apex.tasks",
+          "name": "Tasks",
+          "when": "apex.connected"
+        },
+        {
+          "type": "tree",
+          "id": "apex.plan",
+          "name": "Plan & Subtasks",
+          "when": "apex.connected"
         }
       ]
     },
     "commands": [
       {
         "command": "apex.connect",
-        "title": "APEX: Connect to Runtime"
+        "title": "APEX: Connect to Runtime",
+        "icon": "$(plug)"
       },
       {
         "command": "apex.newTask",
@@ -45,7 +68,72 @@
       {
         "command": "apex.showDiff",
         "title": "APEX: Show Diff"
+      },
+      {
+        "command": "apex.showPlan",
+        "title": "APEX: Show Plan"
+      },
+      {
+        "command": "apex.refresh",
+        "title": "APEX: Refresh"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "apex.refresh",
+          "when": "view == apex.tasks",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "apex.resumeTask",
+          "when": "view == apex.tasks && viewItem == apex.task.finished",
+          "group": "inline"
+        },
+        {
+          "command": "apex.cancelTask",
+          "when": "view == apex.tasks && viewItem == apex.task.running",
+          "group": "inline"
+        },
+        {
+          "command": "apex.showDiff",
+          "when": "view == apex.tasks",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "APEX",
+      "properties": {
+        "apex.executable": {
+          "type": "string",
+          "default": "apex",
+          "description": "Path to the apex executable."
+        },
+        "apex.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Connect to the local runtime automatically on startup."
+        },
+        "apex.refreshIntervalMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "How often to poll task and subtask state."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
   }
 }
