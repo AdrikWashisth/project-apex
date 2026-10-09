@@ -113,6 +113,7 @@ dependencies = [
  "anyhow",
  "apex-core",
  "apex-memory",
+ "apex-orchestrator",
  "apex-protocol",
  "apex-runtime",
  "assert_cmd",
@@ -173,12 +174,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "apex-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "apex-agent",
+ "apex-core",
+ "apex-protocol",
+ "serde",
+ "serde_json",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "apex-protocol"
 version = "0.1.0"
 dependencies = [
  "apex-core",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -189,6 +204,7 @@ dependencies = [
  "apex-core",
  "apex-memory",
  "apex-models",
+ "apex-orchestrator",
  "apex-protocol",
  "apex-tools",
  "apex-verification",
@@ -210,6 +226,7 @@ dependencies = [
  "apex-core",
  "apex-memory",
  "apex-models",
+ "apex-orchestrator",
  "apex-protocol",
  "apex-runtime",
  "apex-tools",

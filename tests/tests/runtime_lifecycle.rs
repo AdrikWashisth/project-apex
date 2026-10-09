@@ -141,9 +141,9 @@ async fn restart_marks_in_flight_tasks_as_interrupted() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn orchestrator_modes_are_rejected_with_a_clear_error() -> Result<()> {
-    // Milestone 5 has not shipped. The runtime must refuse honestly rather
-    // than silently degrading a multi-agent request to single-agent mode.
+async fn orchestrated_mode_requires_a_plan() -> Result<()> {
+    // Orchestrated mode expects the orchestrator to have produced a plan. It
+    // must fail with a clear error rather than silently degrading.
     let tmp = tempfile::tempdir()?;
     let runtime = Runtime::new(offline_config(), Arc::new(Store::open_in_memory()?))?;
     let err = runtime
@@ -154,11 +154,28 @@ async fn orchestrator_modes_are_rejected_with_a_clear_error() -> Result<()> {
             None,
             apex_protocol::ExecutionMode::Orchestrated,
         )
-        .expect_err("orchestrated mode is not implemented yet");
+        .expect_err("orchestrated mode needs a plan");
     assert!(matches!(err, apex_core::error::ApexError::Config(_)));
     assert!(
-        err.to_string().contains("single-agent"),
-        "the error should point the user at what is supported, got: {err}"
+        err.to_string().contains("requires a plan"),
+        "the error should explain what is missing, got: {err}"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn manual_multi_requires_a_team() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let runtime = Runtime::new(offline_config(), Arc::new(Store::open_in_memory()?))?;
+    let err = runtime
+        .create_task(
+            "coordinate this".into(),
+            tmp.path().to_string_lossy().into_owned(),
+            None,
+            None,
+            apex_protocol::ExecutionMode::ManualMulti,
+        )
+        .expect_err("manual multi-agent mode needs a team");
+    assert!(err.to_string().contains("requires a team"), "got: {err}");
     Ok(())
 }

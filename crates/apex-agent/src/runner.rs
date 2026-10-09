@@ -40,6 +40,13 @@ impl Approver for AutoApprover {
     }
 }
 
+#[async_trait]
+impl<T: Approver + ?Sized> Approver for std::sync::Arc<T> {
+    async fn approve(&self, request: &ApprovalRequest) -> Result<bool> {
+        (**self).approve(request).await
+    }
+}
+
 /// Denies every gated action. Used for conservative or unattended runs.
 pub struct DenyAllApprover;
 

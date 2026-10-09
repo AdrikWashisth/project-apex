@@ -12,7 +12,7 @@ complete when the code exists, compiles, is tested and works.
 | 2 — Agent runtime | **Done** | Typed manifests, tool calling, structured events, SQLite persistence, budgets |
 | 3 — Verification | **Done** | Outcome contracts, real build/test/diff checks, bounded repair loop |
 | 4 — Persistent local runtime | **Done** | Session manager, versioned IPC, task lifetime independent of client, reconnection |
-| 5 — Multi-agent execution | **Not started** | Single-agent mode only; orchestrator is a planned mode, not a dependency |
+| 5 — Multi-agent execution | **Done** | Plans, dependency scheduling, conflict avoidance, teams, workflows, handoff |
 | 6 — IDE extension | **Not started** | Protocol is stable and ready for a VS Code client |
 | 7 — Agent creation and registry | **Partial** | Manifest format and validation exist; installation and registry do not |
 | 8 — Memory and Kaizen | **Partial** | Scoped notes and lesson capture exist; evaluation and promotion do not |
@@ -67,10 +67,28 @@ complete when the code exists, compiles, is tested and works.
 - Shutdown signals cancellation to running executors before dropping handles.
 - Approval board for gated actions, with deny-on-timeout.
 
+### Milestone 5 — Multi-agent execution
+
+- `apex-orchestrator` crate: plan validation (DAG, cycles, dangling deps),
+  dependency-ordered scheduling into **waves**, and conflict-aware wave packing.
+- Manual multi-agent mode: `apex run --agents a,b,c`, sequential (handoff) or
+  `--parallel`.
+- Defined workflows: `apex run --workflow file.toml`, with `apex agents plan`
+  to preview one.
+- Read-only agents derived from their manifest run concurrently; agents that can
+  modify the workspace are serialised unless their write scopes are provably
+  disjoint.
+- A workflow cannot grant an agent more power than its own manifest allows.
+- Agent-to-agent handoff: a step receives the actual findings of its
+  dependencies as context.
+- Shared budget: a fan-out cannot multiply the parent task's spend.
+- Every plan step becomes a persisted subtask with its own status, result and
+  event stream.
+- `apex task plan` and `apex task subtasks` to inspect execution.
+
 ### Testing
 
 The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
-
 | Suite | Covers |
 | --- | --- |
 | Unit tests | config, manifests, protocol encoding, storage, tools |
@@ -78,21 +96,13 @@ The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
 | `runtime_ipc` | real socket: handshake, bad-token rejection, task creation, event streaming, reconnect replay |
 | `runtime_lifecycle` | cancellation, shutdown ordering, crash recovery, mode rejection |
 | `security_regression` | path traversal, `.git` protection, permission profiles, no-shell |
+| `multi_agent` | teams run and record subtasks, workflows execute, conflict serialisation, shared budget |
 | `shipped_manifests` | the manifests in `agents/` are parsed by the real validator |
 
 ### Partial: memory and lessons
 
 - Scoped notes (project / agent / user) persisted in SQLite.
 - Verification repair outcomes recorded as project lessons.
-
-## Next: Milestone 5 — Multi-agent execution
-
-- Agent registration and a scheduler that can run several agents concurrently.
-- Agent-to-agent messaging with explicit handoff contracts.
-- Manual multi-agent mode (user assigns work to selected agents).
-- Optional orchestrator as a *selectable mode*, not a mandatory intermediary.
-- Conflict detection for concurrent edits to the same file.
-- User-defined workflow sequences.
 
 ## Next: Milestone 6 — IDE extension
 
@@ -127,4 +137,4 @@ The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
 
 Per the "modular monolith first" constraint, APEX will **not** introduce
 Kubernetes, a message bus, microservices, a plugin hot-loading system or a
-public marketplace until real scale and real demand justify them.
+public marketplace until real scale and real demand justify them..

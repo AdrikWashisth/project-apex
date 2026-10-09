@@ -66,6 +66,10 @@ pub struct Task {
     pub agent_id: Option<String>,
     #[serde(default)]
     pub mode: ExecutionMode,
+    /// The execution plan for a multi-agent task. Persisted so the plan can be
+    /// inspected and replayed after the fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<crate::plan::Plan>,
     pub status: TaskStatus,
     pub created_at: String,
     pub updated_at: String,

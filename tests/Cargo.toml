@@ -15,6 +15,7 @@ apex-agent.workspace = true
 apex-core.workspace = true
 apex-memory.workspace = true
 apex-models.workspace = true
+apex-orchestrator.workspace = true
 apex-protocol.workspace = true
 apex-runtime.workspace = true
 apex-tools.workspace = true

@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use apex_core::error::{ApexError, Result};
-use apex_protocol::{Event, EventKind, Task, TaskStatus};
+use apex_protocol::{Event, EventKind, Subtask, Task, TaskStatus};
 use rusqlite::{params, Connection, OptionalExtension};
 
 /// Scope of a memory note.
@@ -120,6 +120,18 @@ impl Store {
                 created_at   TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_notes_scope ON memory_notes(scope, project_root, agent_id);
+
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id          TEXT PRIMARY KEY,
+                task_id     TEXT NOT NULL,
+                agent_id    TEXT NOT NULL,
+                wave        INTEGER NOT NULL DEFAULT 0,
+                status      TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                data        TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id, wave);
             "#,
         )
         .map_err(|e| ApexError::Storage(format!("migration failed: {e}")))?;
@@ -290,6 +302,70 @@ impl Store {
         Ok(count as usize)
     }
 
+    /// Insert a subtask record.
+    pub fn create_subtask(&self, subtask: &Subtask) -> Result<()> {
+        let data = serde_json::to_string(subtask)?;
+        let conn = self.lock();
+        conn.execute(
+            "INSERT INTO subtasks (id, task_id, agent_id, wave, status, created_at, updated_at, data)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                subtask.id,
+                subtask.task_id,
+                subtask.agent_id,
+                subtask.wave as i64,
+                subtask.status.as_str(),
+                subtask.created_at,
+                subtask.updated_at,
+                data
+            ],
+        )
+        .map_err(|e| ApexError::Storage(format!("could not insert subtask: {e}")))?;
+        Ok(())
+    }
+
+    /// Update an existing subtask.
+    pub fn update_subtask(&self, subtask: &Subtask) -> Result<()> {
+        let data = serde_json::to_string(subtask)?;
+        let conn = self.lock();
+        let changed = conn
+            .execute(
+                "UPDATE subtasks SET status=?2, wave=?3, updated_at=?4, data=?5 WHERE id=?1",
+                params![
+                    subtask.id,
+                    subtask.status.as_str(),
+                    subtask.wave as i64,
+                    subtask.updated_at,
+                    data
+                ],
+            )
+            .map_err(|e| ApexError::Storage(format!("could not update subtask: {e}")))?;
+        if changed == 0 {
+            return Err(ApexError::Storage(format!(
+                "subtask {} not found",
+                subtask.id
+            )));
+        }
+        Ok(())
+    }
+
+    /// List the subtasks of a task, in scheduling order.
+    pub fn list_subtasks(&self, task_id: &str) -> Result<Vec<Subtask>> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT data FROM subtasks WHERE task_id=?1 ORDER BY wave ASC, created_at ASC")
+            .map_err(|e| ApexError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![task_id], |row| row.get::<_, String>(0))
+            .map_err(|e| ApexError::Storage(e.to_string()))?;
+        let mut subtasks = Vec::new();
+        for row in rows {
+            let json = row.map_err(|e| ApexError::Storage(e.to_string()))?;
+            subtasks.push(serde_json::from_str(&json)?);
+        }
+        Ok(subtasks)
+    }
+
     /// Store a scoped memory note.
     pub fn add_note(
         &self,
@@ -410,6 +486,7 @@ pub fn new_task(
         model,
         agent_id,
         mode: Default::default(),
+        plan: None,
         status: TaskStatus::Pending,
         created_at: now.clone(),
         updated_at: now,
@@ -464,6 +541,27 @@ mod tests {
         let after = store.events_after(&task.id, 1).unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].seq, 2);
+    }
+
+    #[test]
+    fn subtask_roundtrip() {
+        let store = Store::open_in_memory().unwrap();
+        let mut a = Subtask::new("task_1", "s1", "apex-default", "first");
+        a.wave = 0;
+        store.create_subtask(&a).unwrap();
+        let mut b = Subtask::new("task_1", "s2", "apex-reviewer", "second");
+        b.wave = 1;
+        store.create_subtask(&b).unwrap();
+
+        let mut a = store.list_subtasks("task_1").unwrap().remove(0);
+        a.result = Some("done".into());
+        store.update_subtask(&a).unwrap();
+
+        let listed = store.list_subtasks("task_1").unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].wave, 0, "subtasks come back in wave order");
+        assert_eq!(listed[0].result.as_deref(), Some("done"));
+        assert!(store.list_subtasks("other").unwrap().is_empty());
     }
 
     #[test]

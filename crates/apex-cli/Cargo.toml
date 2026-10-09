@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 apex-core.workspace = true
 apex-memory.workspace = true
+apex-orchestrator.workspace = true
 apex-runtime.workspace = true
 apex-protocol.workspace = true
 anyhow.workspace = true

@@ -1,0 +1,36 @@
+# Example APEX workflow: review, then fix.
+#
+# Run it with:
+#   apex run "Improve the reliability of the HTTP layer" --workflow workflows/review-then-fix.toml
+#
+# Preview it without running anything:
+#   apex agents plan workflows/review-then-fix.toml
+
+name = "review-then-fix"
+description = "Review the working tree, then fix what the review found."
+
+# The review step is read-only, so it cannot conflict with anything.
+[[steps]]
+id = "review"
+agent = "apex-reviewer"
+objective = """
+Review the current working tree for correctness, security and clarity problems.
+Report each issue with a file path and line number, ordered by severity.
+"""
+
+# The fix step depends on the review, so it receives the reviewer's findings and
+# can never start before they are in.
+[[steps]]
+id = "fix"
+agent = "apex-debugger"
+objective = """
+Fix the problems identified by the review.
+
+Reproduce each issue where possible, apply the smallest fix that addresses the
+root cause, and run the project's real test suite afterwards. Do not weaken or
+delete tests.
+"""
+depends_on = ["review"]
+
+# APEX then runs its own independent verification over the whole workspace:
+# the project must build, the tests must pass, and there must be a real diff.

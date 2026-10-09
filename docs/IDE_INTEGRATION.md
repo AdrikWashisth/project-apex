@@ -51,6 +51,8 @@ degrade silently into a partial mode.
 | `CreateTask` | start work in the open workspace | `Task` |
 | `ListTasks` | recent tasks | `TaskList` |
 | `ShowTask` | task state | `Task` |
+| `ListSubtasks` | subtasks of a multi-agent task | `SubtaskList` |
+| `ShowPlan` | plan and scheduling waves | `Plan` |
 | `SendInstruction` | continue a finished task | `Ok` |
 | `TaskEvents` | replay + subscribe | `Events` |
 | `ListAgents` | available agents | `Agents` |
@@ -90,6 +92,8 @@ history request and the subscription taking effect.
 
 - Conversation messages (assistant text, tool calls as collapsed entries)
 - Tool activity with real results, not "thinking…" placeholders
+- For multi-agent tasks: the plan and its waves, which agent is running which
+  step, and each subtask's result as it lands
 - Approval prompts with the action, its risk class and its arguments
 - Verification results — pass/fail per check with the real command output
 - The real Git diff

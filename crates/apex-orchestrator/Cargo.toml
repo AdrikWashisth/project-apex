@@ -1,6 +1,6 @@
 [package]
-name = "apex-protocol"
-description = "Versioned wire protocol and shared event model for APEX clients and runtime."
+name = "apex-orchestrator"
+description = "Planning, dependency-aware scheduling and conflict-aware execution for multi-agent tasks."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+apex-agent.workspace = true
 apex-core.workspace = true
+apex-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+tracing.workspace = true

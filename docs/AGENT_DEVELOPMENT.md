@@ -59,6 +59,27 @@ evaluation = ["build-and-test"]
 An empty `allowed` list means "every tool permitted by the active permission
 profile". The permission profile still applies — a manifest cannot widen it.
 
+## Read-only agents and the scheduler
+
+APEX derives whether an agent can modify the workspace **from its own tool
+list**, not from anything the caller asserts. An agent is treated as read-only
+when it has none of `write_file`, `edit_file`, `run_command`, `run_build` or
+`run_tests`.
+
+That has two consequences worth knowing:
+
+1. Read-only agents never conflict, so they always run in parallel with each
+   other. `apex-reviewer` is read-only by construction.
+2. A workflow **cannot** make a read-only agent writable. Declaring
+   `writes = ["src/main.rs"]` on a step whose agent is read-only has no effect —
+   the scheduler still treats the step as read-only. This is deliberate: a
+   workflow file is configuration, not a privilege escalation.
+
+An agent that *does* hold a mutating tool but is only ever asked to work in one
+directory can narrow its blast radius by declaring that scope in the workflow
+step's `writes` field. Two agents with provably disjoint scopes will then run
+concurrently instead of being serialised.
+
 ## Validation
 
 A manifest is rejected before the agent is ever loaded if:
@@ -93,6 +114,38 @@ Instructions are the agent's entire behavioural contract. Effective ones:
 | `apex-reviewer` | Read-only review, no edits | read/search/git only |
 | `apex-reviewer` denies | `write_file`, `edit_file`, `run_command`, `run_build`, `run_tests` | — |
 | `apex-debugger` | Reproduce, diagnose, repair | all |
+
+## Composing agents
+
+A team is just a list of agent ids. Sequential (the default) chains them so each
+one receives the previous one's actual findings:
+
+```bash
+apex run "Harden the HTTP layer" --agents apex-debugger,apex-reviewer
+```
+
+A workflow gives finer control, including ordering and write scopes:
+
+```toml
+name = "review-then-fix"
+
+[[steps]]
+id = "review"
+agent = "apex-reviewer"      # read-only → runs in wave 0
+objective = "Report concrete problems, ordered by severity."
+
+[[steps]]
+id = "fix"
+agent = "apex-debugger"
+objective = "Fix what the review found."
+depends_on = ["review"]       # runs in wave 1, with the review in context
+```
+
+Preview any workflow without spending anything:
+
+```bash
+apex agents plan workflows/review-then-fix.toml
+```
 
 ## Test an agent
 

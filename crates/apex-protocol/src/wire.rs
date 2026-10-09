@@ -31,6 +31,17 @@ pub enum Request {
         agent_id: Option<String>,
         #[serde(default)]
         mode: ExecutionMode,
+        /// Manual multi-agent team. Used when `mode` is `manual_multi`.
+        #[serde(default)]
+        team: Option<crate::team::TeamSpec>,
+        /// Explicit execution plan. Used when `mode` is `orchestrated` or
+        /// when the caller wants to supply a plan directly.
+        #[serde(default)]
+        plan: Option<crate::team::PlannedTask>,
+        /// Workflow definition. Used when `mode` is `workflow`; the runtime
+        /// converts it to a plan using its agent catalog.
+        #[serde(default)]
+        workflow: Option<crate::workflow::WorkflowDefinition>,
     },
     /// List recent tasks.
     ListTasks {
@@ -39,6 +50,10 @@ pub enum Request {
     },
     /// Fetch a single task.
     ShowTask { task_id: String },
+    /// List the subtasks of a task.
+    ListSubtasks { task_id: String },
+    /// Return the plan and scheduling waves for a task.
+    ShowPlan { task_id: String },
     /// Append an instruction to a running or paused task.
     SendInstruction {
         task_id: String,
@@ -88,6 +103,18 @@ pub enum Response {
     Ok,
     Task {
         task: Box<Task>,
+    },
+    /// The subtasks of a multi-agent task.
+    SubtaskList {
+        task_id: String,
+        subtasks: Box<Vec<crate::subtask::Subtask>>,
+    },
+    /// The execution plan and its scheduling waves.
+    Plan {
+        task_id: String,
+        plan: Box<crate::plan::Plan>,
+        /// Scheduling wave index for each step, in step order.
+        waves: Box<Vec<usize>>,
     },
     TaskList {
         tasks: Box<Vec<Task>>,

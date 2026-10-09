@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use apex_core::config::Config;
 use apex_core::Project;
-use apex_protocol::{Request, Response};
+use apex_protocol::{ExecutionMode, Request, Response};
 
 use crate::daemon;
 use crate::render;
@@ -40,10 +40,16 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
             objective,
             model,
             agent,
+            agents,
+            parallel,
+            workflow,
             diff,
             no_wait,
         } => {
             let mut client = daemon::connect_or_start(&config).await?;
+            // Resolve the execution mode and any team/workflow/plan up front so
+            // a bad configuration fails before the task is created.
+            let execution = build_execution(agents.as_deref(), parallel, workflow.as_deref())?;
             run_task(
                 &mut client,
                 &objective,
@@ -53,6 +59,10 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
                 !no_wait,
                 diff,
                 cli.json,
+                execution.mode,
+                execution.team,
+                execution.workflow,
+                execution.plan,
             )
             .await
         }
@@ -95,8 +105,33 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
                 !no_wait,
                 false,
                 cli.json,
+                ExecutionMode::Single,
+                None,
+                None,
+                None,
             )
             .await
+        }
+        Command::Agents(AgentsCommand::Plan { workflow }) => {
+            let definition =
+                apex_orchestrator::WorkflowDefinition::load(std::path::Path::new(&workflow))?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&definition)?);
+            } else {
+                println!("workflow: {} — {}", definition.name, definition.description);
+                for step in &definition.steps {
+                    let deps = if step.depends_on.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" (after {})", step.depends_on.join(", "))
+                    };
+                    println!(
+                        "  {:<12} {:<16} {}{}",
+                        step.id, step.agent, step.objective, deps
+                    );
+                }
+            }
+            Ok(())
         }
         Command::Models(ModelsCommand::List) => {
             let mut config = config.clone();
@@ -226,6 +261,66 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
     }
 }
 
+/// The execution mode and everything that configures it.
+struct Execution {
+    mode: ExecutionMode,
+    team: Option<apex_protocol::TeamSpec>,
+    workflow: Option<apex_orchestrator::WorkflowDefinition>,
+    plan: Option<apex_protocol::Plan>,
+}
+
+/// Build the execution mode and its team / workflow / plan configuration.
+///
+/// Exactly one of single-agent, manual multi-agent or workflow may be selected;
+/// anything ambiguous is rejected rather than silently guessed.
+fn build_execution(
+    agents: Option<&str>,
+    parallel: bool,
+    workflow: Option<&str>,
+) -> Result<Execution> {
+    use apex_orchestrator::WorkflowDefinition;
+    use apex_protocol::{TeamSpec, TeamStrategy};
+
+    if agents.is_some() && workflow.is_some() {
+        anyhow::bail!("--agents and --workflow cannot be combined; pick one");
+    }
+    if parallel && agents.is_none() {
+        anyhow::bail!("--parallel only applies with --agents");
+    }
+
+    if let Some(file) = workflow {
+        let definition = WorkflowDefinition::load(std::path::Path::new(file))?;
+        return Ok(Execution {
+            mode: ExecutionMode::Workflow,
+            team: None,
+            workflow: Some(definition),
+            plan: None,
+        });
+    }
+
+    if let Some(csv) = agents {
+        let mut spec = TeamSpec::from_csv(csv);
+        spec.strategy = if parallel {
+            TeamStrategy::Parallel
+        } else {
+            TeamStrategy::Sequential
+        };
+        return Ok(Execution {
+            mode: ExecutionMode::ManualMulti,
+            team: Some(spec),
+            workflow: None,
+            plan: None,
+        });
+    }
+
+    Ok(Execution {
+        mode: ExecutionMode::Single,
+        team: None,
+        workflow: None,
+        plan: None,
+    })
+}
+
 /// Create a task and (optionally) stream it to completion.
 #[allow(clippy::too_many_arguments)]
 async fn run_task(
@@ -237,6 +332,10 @@ async fn run_task(
     wait: bool,
     show_diff: bool,
     json: bool,
+    mode: ExecutionMode,
+    team: Option<apex_protocol::TeamSpec>,
+    workflow: Option<apex_orchestrator::WorkflowDefinition>,
+    plan: Option<apex_protocol::Plan>,
 ) -> Result<()> {
     let root = project_root.to_string_lossy().into_owned();
     let response = client
@@ -245,7 +344,10 @@ async fn run_task(
             project_root: root,
             model,
             agent_id: agent,
-            mode: Default::default(),
+            mode,
+            team,
+            workflow,
+            plan: plan.map(|p| apex_protocol::PlannedTask { steps: p.steps }),
         })
         .await?;
     let Response::Task { task } = response else {
@@ -374,7 +476,7 @@ async fn task_command(
             }
             Ok(())
         }
-        TaskCommand::Show { task_id } => {
+        TaskCommand::Show { task_id, subtasks } => {
             let Response::Task { task } = client
                 .request(Request::ShowTask {
                     task_id: task_id.clone(),
@@ -402,6 +504,33 @@ async fn task_command(
                     }
                 }
                 print!("{}", render::render_report(&task, None));
+            }
+            if subtasks {
+                print_subtasks(client, &task_id, json).await?;
+            }
+            Ok(())
+        }
+        TaskCommand::Subtasks { task_id } => print_subtasks(client, &task_id, json).await,
+        TaskCommand::Plan { task_id } => {
+            let response = client.request(Request::ShowPlan { task_id }).await?;
+            if let Response::Plan { plan, waves, .. } = response {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&plan)?);
+                } else if plan.is_empty() {
+                    println!("this task has no multi-step plan (single-agent mode)");
+                } else {
+                    println!("{:<14} {:<5} {:<16} OBJECTIVE", "STEP", "WAVE", "AGENT");
+                    for (index, step) in plan.steps.iter().enumerate() {
+                        let wave = waves.get(index).copied().unwrap_or(0);
+                        println!(
+                            "{:<14} {:<5} {:<16} {}",
+                            step.id,
+                            wave,
+                            step.agent_id,
+                            render::truncate(&step.objective, 60)
+                        );
+                    }
+                }
             }
             Ok(())
         }
@@ -439,6 +568,50 @@ async fn task_command(
             Ok(())
         }
     }
+}
+
+/// Print the subtasks of a multi-agent task.
+async fn print_subtasks(
+    client: &mut apex_runtime::client::Client,
+    task_id: &str,
+    json: bool,
+) -> Result<()> {
+    let response = client
+        .request(Request::ListSubtasks {
+            task_id: task_id.to_string(),
+        })
+        .await?;
+    let Response::SubtaskList { subtasks, .. } = response else {
+        anyhow::bail!("unexpected response listing subtasks");
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&subtasks)?);
+        return Ok(());
+    }
+    if subtasks.is_empty() {
+        println!("(no subtasks — this was a single-agent task)");
+        return Ok(());
+    }
+    println!(
+        "{:<14} {:<5} {:<16} {:<10} RESULT",
+        "SUBTASK", "WAVE", "AGENT", "STATUS"
+    );
+    for subtask in subtasks.iter() {
+        let result = subtask
+            .result
+            .as_deref()
+            .or(subtask.error.as_deref())
+            .unwrap_or("");
+        println!(
+            "{:<14} {:<5} {:<16} {:<10} {}",
+            subtask.id,
+            subtask.wave,
+            subtask.agent_id,
+            subtask.status.as_str(),
+            render::truncate(result.trim(), 60)
+        );
+    }
+    Ok(())
 }
 
 /// Resolve a task id, defaulting to the most recent task.

@@ -34,10 +34,58 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
             model,
             agent_id,
             mode,
+            team,
+            plan,
+            workflow,
         } => {
-            let task = runtime.create_task(objective, project_root, model, agent_id, mode)?;
+            let task = runtime.create_task_with_plan(
+                objective,
+                project_root,
+                model,
+                agent_id,
+                mode,
+                team,
+                workflow,
+                plan.map(|p| apex_protocol::Plan::new(p.steps)),
+            )?;
             Ok(Response::Task {
                 task: Box::new(task),
+            })
+        }
+        Request::ListSubtasks { task_id } => {
+            let subtasks = runtime.store.list_subtasks(&task_id)?;
+            Ok(Response::SubtaskList {
+                task_id,
+                subtasks: Box::new(subtasks),
+            })
+        }
+        Request::ShowPlan { task_id } => {
+            let task = runtime
+                .store
+                .get_task(&task_id)?
+                .ok_or_else(|| ApexError::Storage(format!("task {task_id} not found")))?;
+            let plan = task.plan.clone().unwrap_or_default();
+            // Recompute the waves so the client sees the current schedule.
+            let waves = apex_orchestrator::schedule(&plan, Default::default())
+                .map(|waves| {
+                    // Build a step-id -> wave-index map, then report in step order.
+                    let mut index: std::collections::HashMap<&str, usize> =
+                        std::collections::HashMap::new();
+                    for (wave_index, wave) in waves.iter().enumerate() {
+                        for step in wave {
+                            index.insert(step.id.as_str(), wave_index);
+                        }
+                    }
+                    plan.steps
+                        .iter()
+                        .map(|s| index.get(s.id.as_str()).copied().unwrap_or(0))
+                        .collect::<Vec<usize>>()
+                })
+                .unwrap_or_default();
+            Ok(Response::Plan {
+                task_id,
+                plan: Box::new(plan),
+                waves: Box::new(waves),
             })
         }
         Request::ListTasks { limit } => {
@@ -119,6 +167,14 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
             Ok(Response::Ok)
         }
     }
+}
+
+/// What the per-connection reader task reports back to the handler.
+enum ReadOutcome {
+    Frame(Frame),
+    /// The peer closed the connection cleanly.
+    Closed,
+    Error(String),
 }
 
 /// Accept connections until the runtime shuts down.
@@ -246,6 +302,36 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
 
     // Live events are funnelled through one channel per connection.
     let (live_tx, mut live_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+
+    // Frames are read by a dedicated task.
+    //
+    // This is NOT just tidiness. `read_frame` consumes bytes one at a time, so
+    // cancelling it part-way through a frame would discard the bytes already
+    // read and desynchronise the protocol stream — the client would then wait
+    // forever for a response that can no longer parse. Reading in a task that
+    // is never cancelled guarantees a frame is either delivered whole or not at
+    // all.
+    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::unbounded_channel::<ReadOutcome>();
+    tokio::spawn(async move {
+        loop {
+            match read_frame(&mut reader).await {
+                Ok(Some(frame)) => {
+                    if frame_tx.send(ReadOutcome::Frame(frame)).is_err() {
+                        return;
+                    }
+                }
+                Ok(None) => {
+                    let _ = frame_tx.send(ReadOutcome::Closed);
+                    return;
+                }
+                Err(e) => {
+                    let _ = frame_tx.send(ReadOutcome::Error(e.to_string()));
+                    return;
+                }
+            }
+        }
+    });
+
     let mut forwarders: HashMap<String, JoinHandle<()>> = HashMap::new();
     let shutdown = runtime.shutdown_token();
 
@@ -264,9 +350,9 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
                 }
             }
 
-            frame = read_frame(&mut reader) => {
-                match frame {
-                    Ok(Some(Frame::Request { id, request })) => {
+            outcome = frame_rx.recv() => {
+                match outcome {
+                    Some(ReadOutcome::Frame(Frame::Request { id, request })) => {
                         runtime.touch();
                         let subscribe_to = match &request {
                             Request::TaskEvents { task_id, .. } => Some(task_id.clone()),
@@ -287,12 +373,13 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
                             break Ok(());
                         }
                     }
-                    Ok(Some(_)) => {}
-                    Ok(None) => break Ok(()),
-                    Err(e) => {
-                        tracing::debug!(error = %e, "frame read error");
+                    Some(ReadOutcome::Frame(_)) => {}
+                    Some(ReadOutcome::Closed) => break Ok(()),
+                    Some(ReadOutcome::Error(message)) => {
+                        tracing::debug!(error = %message, "frame read error");
                         break Ok(());
                     }
+                    None => break Ok(()),
                 }
             }
         }

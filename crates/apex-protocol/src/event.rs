@@ -69,6 +69,30 @@ pub enum EventKind {
     Diff {
         summary: String,
     },
+    /// A subtask (delegated agent) has started.
+    SubtaskStarted {
+        subtask_id: String,
+        agent_id: String,
+        objective: String,
+        wave: usize,
+    },
+    /// A subtask has finished.
+    SubtaskFinished {
+        subtask_id: String,
+        agent_id: String,
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// A computed execution plan, with the scheduling waves.
+    PlanScheduled {
+        /// Human-readable plan steps.
+        steps: Vec<String>,
+        /// How many waves the scheduler produced.
+        waves: usize,
+    },
     Log {
         level: String,
         message: String,
@@ -93,6 +117,9 @@ impl EventKind {
             EventKind::Usage { .. } => "usage",
             EventKind::Verification { .. } => "verification",
             EventKind::Diff { .. } => "diff",
+            EventKind::SubtaskStarted { .. } => "subtask_started",
+            EventKind::SubtaskFinished { .. } => "subtask_finished",
+            EventKind::PlanScheduled { .. } => "plan_scheduled",
             EventKind::Log { .. } => "log",
             EventKind::Error { .. } => "error",
         }

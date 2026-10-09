@@ -58,6 +58,9 @@ async fn client_connects_over_real_socket_and_receives_events() -> Result<()> {
             model: None,
             agent_id: None,
             mode: Default::default(),
+            team: None,
+            plan: None,
+            workflow: None,
         })
         .await?;
     let Response::Task { task } = response else {

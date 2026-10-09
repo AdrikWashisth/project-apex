@@ -10,11 +10,12 @@ use apex_core::error::{ApexError, Result};
 use apex_memory::{MemoryScope, Store};
 use apex_models::{FakeProvider, ModelProvider};
 use apex_protocol::{ChatMessage, Event, EventKind, EventSink, Task, TaskStatus, Usage};
-use apex_verification::{repair_instruction, verify, OutcomeContract};
+use apex_verification::{repair_instruction, verify, OutcomeContract, VerificationReport};
 use async_trait::async_trait;
 use tokio::sync::{broadcast, oneshot};
 use tokio_util::sync::CancellationToken;
 
+use crate::multi::BudgetTracker;
 use crate::Runtime;
 
 /// Board for tracking pending human approvals.
@@ -244,8 +245,7 @@ async fn execute_inner(
     let (provider_name, model_id) = resolve_runtime_model(&runtime.config, task.model.as_deref());
     let provider = build_provider_for(&runtime.config, &provider_name);
 
-    let runner = AgentRunner::new(provider, runtime.registry.clone());
-    let approver = BoardApprover::new(runtime.approvals.clone());
+    let runner = AgentRunner::new(Arc::clone(&provider), runtime.registry.clone());
 
     // Mark running.
     task.status = TaskStatus::Running;
@@ -256,12 +256,13 @@ async fn execute_inner(
     store.update_task(&task)?;
 
     let (tx, _rx) = runtime.broadcast_channel(&task_id);
-    let sink = TaskSink::new(
+    let sink = std::sync::Arc::new(TaskSink::new(
         store.clone(),
         task_id.clone(),
         tx,
         runtime.config.memory.max_events_per_task as usize,
-    );
+    ));
+    let approver = std::sync::Arc::new(BoardApprover::new(runtime.approvals.clone()));
     sink.emit(EventKind::StatusChanged {
         status: TaskStatus::Running,
         reason: Some(format!(
@@ -271,6 +272,80 @@ async fn execute_inner(
     });
 
     let cancel = runtime.cancel_token(&task_id);
+
+    // Multi-agent modes execute a validated plan wave by wave, then verify the
+    // workspace as a whole.
+    if let Some(plan) = task.plan.clone() {
+        let config = apex_orchestrator::SchedulerConfig::default();
+        let waves = apex_orchestrator::schedule(&plan, config)?;
+        let mut tracker = BudgetTracker::new(task.budget.clone());
+        let outcomes = crate::multi::execute_plan(
+            &runtime,
+            &store,
+            Arc::clone(&provider),
+            &runtime.catalog,
+            &task,
+            &plan,
+            &waves,
+            Arc::clone(&sink) as Arc<dyn apex_protocol::EventSink>,
+            Arc::clone(&approver) as Arc<dyn apex_agent::Approver>,
+            &mut tracker,
+            &model_id,
+        )
+        .await?;
+
+        let mut tool_calls = 0u32;
+        let mut steps = 0u32;
+        let mut parts: Vec<String> = Vec::new();
+        let mut failed: Option<String> = None;
+        for outcome in &outcomes {
+            tool_calls += outcome.subtask.tool_calls;
+            steps += outcome.subtask.steps;
+            if let Some(result) = &outcome.subtask.result {
+                parts.push(format!("[{}] {}", outcome.subtask.agent_id, result.trim()));
+            }
+            if outcome.subtask.status == apex_protocol::SubtaskStatus::Failed {
+                failed = Some(format!(
+                    "subtask '{}' failed: {}",
+                    outcome.subtask.id,
+                    outcome.subtask.error.as_deref().unwrap_or("unknown error")
+                ));
+            }
+        }
+        let summary = if parts.is_empty() {
+            "No subtask produced a result.".to_string()
+        } else {
+            parts.join("\n")
+        };
+        let usage = tracker.usage().clone();
+
+        // A failed subtask stops here: the team did not reach the objective, so
+        // a repair loop would only paper over it.
+        let status = if failed.is_some() {
+            TaskStatus::Failed
+        } else {
+            let contract = OutcomeContract::derive(&task.objective, &workspace_root);
+            let report = verify(&workspace_root, &contract).await?;
+            emit_verification(&sink, &report);
+            if report.passed {
+                TaskStatus::Completed
+            } else {
+                let failures: Vec<String> =
+                    report.failures().iter().map(|c| c.name.clone()).collect();
+                failed = Some(format!(
+                    "verification failed after {} subtask(s): {}",
+                    outcomes.len(),
+                    failures.join(", ")
+                ));
+                TaskStatus::Failed
+            }
+        };
+
+        return finish_task(
+            &store, &mut task, &sink, status, summary, failed, usage, tool_calls, steps, 0,
+        );
+    }
+
     let context_notes = load_context(&store, &task, &agent.memory.scope, &agent.id);
 
     let objective = extra_instruction.unwrap_or_else(|| task.objective.clone());
@@ -293,7 +368,7 @@ async fn execute_inner(
     let mut summary;
     let mut failed: Option<String> = None;
 
-    let outcome = runner.run(agent, input.clone(), &sink, &approver).await?;
+    let outcome = runner.run(agent, input.clone(), &*sink, &*approver).await?;
     usage.accumulate(&outcome.usage);
     tool_calls += outcome.tool_calls;
     steps += outcome.steps;
@@ -328,7 +403,7 @@ async fn execute_inner(
             prior_messages: outcome.messages.clone(),
             context_notes: Vec::new(),
         };
-        let repair_outcome = runner.run(agent, input.clone(), &sink, &approver).await?;
+        let repair_outcome = runner.run(agent, input.clone(), &*sink, &*approver).await?;
         usage.accumulate(&repair_outcome.usage);
         tool_calls += repair_outcome.tool_calls;
         steps += repair_outcome.steps;
@@ -336,15 +411,7 @@ async fn execute_inner(
         report = verify(&workspace_root, &contract).await?;
     }
 
-    sink.emit(EventKind::Verification {
-        passed: report.passed,
-        checks: report.checks.clone(),
-    });
-    if !report.diff_summary.trim().is_empty() {
-        sink.emit(EventKind::Diff {
-            summary: report.diff_summary.clone(),
-        });
-    }
+    emit_verification(&sink, &report);
 
     let status = if failed.is_some() {
         TaskStatus::Failed
@@ -382,29 +449,9 @@ async fn execute_inner(
         );
     }
 
-    task.status = status;
-    task.usage = usage;
-    task.tool_calls = tool_calls;
-    task.steps = steps;
-    task.repair_attempts = attempt;
-    task.summary = Some(summary);
-    task.error = error;
-    task.updated_at = apex_core::now_rfc3339();
-    task.finished_at = Some(task.updated_at.clone());
-    store.update_task(&task)?;
-
-    sink.emit(EventKind::StatusChanged {
-        status,
-        reason: task.error.clone(),
-    });
-
-    if status == TaskStatus::Failed {
-        if let Some(message) = task.error.clone() {
-            sink.emit(EventKind::Error { message });
-        }
-    }
-
-    Ok(())
+    finish_task(
+        &store, &mut task, &sink, status, summary, error, usage, tool_calls, steps, attempt,
+    )
 }
 
 fn resolve_agent<'a>(
@@ -415,6 +462,56 @@ fn resolve_agent<'a>(
         Some(agent) => agent,
         None => catalog.default_agent(),
     }
+}
+
+/// Emit a verification result to the event stream.
+fn emit_verification(sink: &dyn EventSink, report: &VerificationReport) {
+    sink.emit(EventKind::Verification {
+        passed: report.passed,
+        checks: report.checks.clone(),
+    });
+    if !report.diff_summary.trim().is_empty() {
+        sink.emit(EventKind::Diff {
+            summary: report.diff_summary.clone(),
+        });
+    }
+}
+
+/// Persist a terminal task state and emit the closing events.
+#[allow(clippy::too_many_arguments)]
+fn finish_task(
+    store: &Store,
+    task: &mut Task,
+    sink: &dyn EventSink,
+    status: TaskStatus,
+    summary: String,
+    error: Option<String>,
+    usage: Usage,
+    tool_calls: u32,
+    steps: u32,
+    repair_attempts: u32,
+) -> Result<()> {
+    task.status = status;
+    task.usage = usage;
+    task.tool_calls = tool_calls;
+    task.steps = steps;
+    task.repair_attempts = repair_attempts;
+    task.summary = Some(summary);
+    task.error = error.clone();
+    task.updated_at = apex_core::now_rfc3339();
+    task.finished_at = Some(task.updated_at.clone());
+    store.update_task(task)?;
+
+    sink.emit(EventKind::StatusChanged {
+        status,
+        reason: error,
+    });
+    if status == TaskStatus::Failed {
+        if let Some(message) = task.error.clone() {
+            sink.emit(EventKind::Error { message });
+        }
+    }
+    Ok(())
 }
 
 fn load_context(store: &Store, task: &Task, scope: &str, agent_id: &str) -> Vec<String> {

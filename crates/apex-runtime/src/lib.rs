@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod ipc;
+pub mod multi;
 pub mod task;
 pub mod transport;
 
@@ -166,21 +167,57 @@ impl Runtime {
         agent_id: Option<String>,
         mode: ExecutionMode,
     ) -> Result<Task> {
-        if mode != ExecutionMode::Single {
-            return Err(ApexError::config(
-                "only single-agent mode is implemented in this milestone; orchestrated and workflow modes are planned",
-            ));
-        }
+        self.create_task_with_plan(
+            objective,
+            project_root,
+            model,
+            agent_id,
+            mode,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Create and start a task, optionally supplying a team, workflow or plan.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_task_with_plan(
+        self: &Arc<Self>,
+        objective: String,
+        project_root: String,
+        model: Option<String>,
+        agent_id: Option<String>,
+        mode: ExecutionMode,
+        team: Option<apex_protocol::TeamSpec>,
+        workflow: Option<apex_orchestrator::WorkflowDefinition>,
+        plan: Option<apex_protocol::Plan>,
+    ) -> Result<Task> {
         let root = PathBuf::from(&project_root);
         if !root.exists() {
             return Err(ApexError::Project(format!(
                 "project root does not exist: {project_root}"
             )));
         }
+
+        // Build the plan up front so an invalid team or workflow fails before
+        // anything is written to disk or executed.
+        let resolved_plan = match mode {
+            ExecutionMode::Single => None,
+            _ => Some(apex_orchestrator::plan_for_mode(
+                mode,
+                team.as_ref(),
+                workflow.as_ref(),
+                plan.as_ref(),
+                &objective,
+                &self.catalog,
+            )?),
+        };
+
         let task = new_task(objective, project_root, model, agent_id);
         let mut task = task;
         task.budget = self.config.budget.clone();
         task.mode = mode;
+        task.plan = resolved_plan;
         self.store.create_task(&task)?;
 
         // Kick off execution.

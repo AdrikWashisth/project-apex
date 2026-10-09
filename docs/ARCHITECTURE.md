@@ -15,11 +15,12 @@ output. A model's self-reported confidence is never accepted as verification.
 ```text
 crates/
   apex-core/           configuration, project discovery, Git, process, path safety
-  apex-protocol/       wire protocol, task/event model, message model
+  apex-protocol/       wire protocol, task/event/subtask model, plans, workflows
   apex-models/         provider abstraction + OpenAI-compatible adapter + fake
   apex-tools/          typed, permissioned tools
-  apex-memory/         SQLite persistence for tasks, events and notes
+  apex-memory/         SQLite persistence for tasks, events, subtasks, notes
   apex-agent/          agent manifests, catalog, bounded execution loop
+  apex-orchestrator/   plan validation, wave scheduling, conflict avoidance
   apex-verification/   outcome contracts, independent checks, repair guidance
   apex-runtime/        session manager, task executor, IPC server and client
   apex-cli/            the `apex` binary (a client of the runtime)
@@ -194,6 +195,92 @@ failed checks into a concrete, evidence-bearing instruction for the agent.
 Verification is intentionally outside the agent: it uses the same tool
 implementation but a separate code path, so a model cannot mark its own work as
 verified.
+
+## Multi-agent execution
+
+A task may be executed by one agent or by many. Multi-agent tasks run a
+**plan**: an ordered set of steps, each bound to an agent, with explicit
+dependencies.
+
+### Where the types live
+
+`Plan`, `PlannedStep`, `TeamSpec` and `WorkflowDefinition` are domain data and
+live in `apex-protocol`, so they can travel over the wire. The scheduling
+*algorithm* lives in `apex-orchestrator`, which depends on the agent registry.
+The runtime owns execution.
+
+### Scheduling
+
+`apex_orchestrator::schedule` turns a validated plan into **waves** — ordered
+groups of steps that may run concurrently:
+
+```text
+plan:  a (no deps)
+       b (needs a)
+       c (needs a)
+       d (needs b, c)
+
+waves: [ a ]
+       [ b, c ]
+       [ d ]
+```
+
+A step's wave index is always greater than that of its dependencies.
+
+### Conflict avoidance
+
+Two steps in the same wave never share a write target. Conflict detection is
+**conservative**: two write globs are treated as conflicting unless they are
+provably disjoint, which happens only when two literal path segments differ.
+
+| Claim | Overlaps? | Why |
+| --- | --- | --- |
+| `src/main.rs` vs `src/main.rs` | yes | identical |
+| `**` vs anything | yes | matches everything |
+| `src` vs `src/main.rs` | yes | directory prefix |
+| `src/*.rs` vs `src/main.rs` | yes | glob metacharacter |
+| `src/a.rs` vs `docs/b.md` | no | literal segments differ |
+| `src/a.rs` vs `src/b.rs` | no | literal segments differ |
+
+A step that declares no write scope is treated as `**`, so two undeclared steps
+never run together. This costs parallelism but prevents silent clobbering.
+
+Read-only steps — derived from the agent manifest's tool permissions, not from
+anything the caller asserts — never conflict and always run in parallel.
+
+### Handoff
+
+When a step's dependencies have finished, their actual results are injected into
+its context:
+
+```text
+Result from review (apex-reviewer):
+  src/users.rs:42 — no validation on the email field.
+
+Note: fix (apex-debugger) did not complete successfully: ... Verify its
+assumptions before relying on them.
+```
+
+A step whose dependency failed is **skipped**, and its own dependents are
+skipped in turn.
+
+### Budget
+
+`BudgetTracker` accumulates usage across every subtask and gives each concurrent
+step at most `1/parallelism` of the remaining step and tool-call allowance. A
+five-agent fan-out cannot spend five times the parent budget.
+
+### Modes
+
+| Mode | How to use it | Plan source |
+| --- | --- | --- |
+| `single` | `apex run "..."` | none |
+| `manual_multi` | `apex run "..." --agents a,b,c` | derived from the team |
+| `workflow` | `apex run "..." --workflow file.toml` | derived from the workflow |
+| `orchestrated` | not yet exposed | supplied by the orchestrator |
+
+`orchestrated` is accepted by the protocol and validated, but no model-driven
+planner ships yet; requesting it without a plan fails with a clear error.
 
 ## Memory
 

@@ -25,6 +25,9 @@ engineering objective was actually achieved.
   back to the agent for a bounded number of repair attempts.
 - **A persistent runtime** — tasks survive terminal closure. The CLI and a
   future IDE extension talk to the same runtime over a versioned protocol.
+- **Multi-agent execution** — hand a task to a team or a workflow. APEX builds a
+  plan, schedules it into dependency-ordered waves, and refuses to run two
+  agents concurrently if they could write the same file.
 - **Security boundaries** — every filesystem path is confined to the workspace;
   permission profiles gate what an agent may do; commands never go through a
   shell.
@@ -106,10 +109,13 @@ Evidence: 7 tool call(s), 9 step(s), 0 repair attempt(s), 24180 tokens
 apex run <objective>        Start a task and stream it to completion
 apex task list              List recent tasks
 apex task show <id>         Show a task and its event stream
+apex task plan <id>         Show the plan and scheduling waves
+apex task subtasks <id>     List the subtasks of a multi-agent task
 apex task resume <id>       Resume an interrupted or failed task
 apex task send <id> <text>  Continue a finished conversation
 apex task cancel <id>       Cancel a running task
 apex agents list            List available agents
+apex agents plan <file>     Preview a workflow without running it
 apex agents run <id> <goal> Run a task with a specific agent
 apex models list            List providers and models
 apex models set <p/m>       Set the default model
@@ -122,6 +128,44 @@ apex runtime                Start or attach to the persistent runtime
 ```
 
 Add `--json` to any command for machine-readable output.
+
+## Running multiple agents
+
+By default a task runs on one agent. You can hand it to a team, or run a
+workflow:
+
+```bash
+# A team. Members run in order, each receiving the previous one's findings.
+apex run "Harden the input validation" --agents apex-debugger,apex-reviewer
+
+# Or let them work concurrently (safe: APEX will not run two agents that could
+# write the same file at once).
+apex run "Audit the codebase" --agents apex-reviewer,apex-reviewer --parallel
+
+# A workflow: review first, then fix what the review found.
+apex run "Improve reliability" --workflow workflows/review-then-fix.toml
+```
+
+APEX builds an execution plan, schedules it into waves, and refuses to run two
+agents concurrently if they could both write the same file:
+
+```text
+$ apex run "Improve reliability" --workflow workflows/review-then-fix.toml
+
+wave 0: review (apex-reviewer)
+wave 1: fix (apex-debugger)
+```
+
+Read-only agents (like `apex-reviewer`) never conflict, so they always run in
+parallel. Inspect any run afterwards:
+
+```bash
+apex task plan <task-id>       # steps and waves
+apex task subtasks <task-id>   # per-agent status and result
+```
+
+The whole task still finishes with a single independent verification pass over
+the workspace — a team is not trusted just because several agents agreed.
 
 ## Architecture at a glance
 
@@ -182,13 +226,16 @@ including the fact that APEX does not sandbox agent processes at the OS level.
 
 ## Status
 
-This is an early, actively developed project. Milestones 1–4 (CLI, agent runtime,
-verification, persistent runtime) are implemented and tested. Multi-agent
-orchestration, the IDE extension and the agent registry are on the roadmap and
-are **not** yet available — the roadmap marks exactly where the boundary is.
+This is an early, actively developed project. Milestones 1–5 (CLI, agent runtime,
+verification, persistent runtime, multi-agent execution) are implemented and
+tested. The IDE extension, the agent registry and controlled self-improvement
+are on the roadmap and are **not** yet available — the roadmap marks exactly
+where the boundary is.
 
 The `extensions/vscode/` directory is a manifest skeleton, not a working
-extension.
+extension. Model-driven `orchestrated` mode is accepted and validated by the
+protocol, but no planner ships yet: supplying a plan works, omitting one fails
+with a clear error.
 
 ## Development
 

@@ -7,6 +7,7 @@ members = [
     "crates/apex-tools",
     "crates/apex-memory",
     "crates/apex-agent",
+    "crates/apex-orchestrator",
     "crates/apex-verification",
     "crates/apex-runtime",
     "crates/apex-cli",
@@ -27,6 +28,7 @@ apex-models = { path = "crates/apex-models" }
 apex-tools = { path = "crates/apex-tools" }
 apex-memory = { path = "crates/apex-memory" }
 apex-agent = { path = "crates/apex-agent" }
+apex-orchestrator = { path = "crates/apex-orchestrator" }
 apex-verification = { path = "crates/apex-verification" }
 apex-runtime = { path = "crates/apex-runtime" }
 

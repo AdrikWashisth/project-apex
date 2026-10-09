@@ -58,6 +58,16 @@ pub(crate) enum Command {
         /// Agent id to use.
         #[arg(long)]
         agent: Option<String>,
+        /// Run several agents on the task, comma-separated
+        /// (e.g. --agents apex-debugger,apex-reviewer).
+        #[arg(long)]
+        agents: Option<String>,
+        /// Let team members run concurrently instead of handing work forward.
+        #[arg(long)]
+        parallel: bool,
+        /// Execute a workflow definition file.
+        #[arg(long, value_name = "FILE")]
+        workflow: Option<String>,
         /// Print the resulting Git diff when finished.
         #[arg(long)]
         diff: bool,
@@ -101,7 +111,16 @@ pub(crate) enum TaskCommand {
         limit: u32,
     },
     /// Show a task and its events.
-    Show { task_id: String },
+    Show {
+        task_id: String,
+        /// Also list the subtasks of a multi-agent task.
+        #[arg(long)]
+        subtasks: bool,
+    },
+    /// Show the execution plan and scheduling waves of a multi-agent task.
+    Plan { task_id: String },
+    /// List the subtasks of a multi-agent task.
+    Subtasks { task_id: String },
     /// Resume an interrupted or failed task.
     Resume { task_id: String },
     /// Send an additional instruction to a finished task.
@@ -117,6 +136,11 @@ pub(crate) enum TaskCommand {
 pub(crate) enum AgentsCommand {
     /// List available agents.
     List,
+    /// Show a workflow definition file without running it.
+    Plan {
+        /// Workflow TOML file.
+        workflow: String,
+    },
     /// Run a task with a specific agent.
     Run {
         agent_id: String,
