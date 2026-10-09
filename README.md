@@ -51,7 +51,7 @@ Check the environment:
 apex doctor
 ```
 
-Configure a model. APEX ships an offline provider so you can try everything
+Configure a model. APEX ships an dummy offline provider so you can try everything
 before you have an API key:
 
 ```toml
