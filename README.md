@@ -32,8 +32,6 @@ engineering objective was actually achieved.
   permission profiles gate what an agent may do; commands never go through a
   shell.
 
-
-
 ## Install
 
 One command. The installer puts Rust, the binary and your PATH in order, and
@@ -58,13 +56,6 @@ git clone https://github.com/AdrikWashisth/project-apex.git
 cd project-apex
 ./install.sh          # Linux / macOS
 # .\install.ps1        # Windows
-```
-
-If you already have Rust 1.99 or newer, you can skip all of that:
-
-```bash
-cargo build --release --bin apex
-# binary at target/release/apex (apex.exe on Windows)
 ```
 
 Then check the environment and configure a model:
