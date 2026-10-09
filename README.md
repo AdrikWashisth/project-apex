@@ -32,18 +32,9 @@ engineering objective was actually achieved.
   permission profiles gate what an agent may do; commands never go through a
   shell.
 
-## Install (build your own)
 
-Requires Rust 1.99 or newer.
 
-```bash
-git clone <repository-url> apex
-cd apex
-cargo build --release
-# the binary is at target/release/apex (apex.exe on Windows)
-```
-
-## Install (oneshot command)
+## Install
 
 One command. The installer puts Rust, the binary and your PATH in order, and
 leaves your configuration, agents and task history alone if you re-run it.
