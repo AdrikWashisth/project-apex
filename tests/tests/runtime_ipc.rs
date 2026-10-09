@@ -160,7 +160,7 @@ async fn wait_terminal(
             panic!("expected task");
         };
         if task.status.is_terminal() {
-            return Ok(task);
+            return Ok(*task);
         }
         if std::time::Instant::now() > deadline {
             return Err(apex_core::error::ApexError::Storage(format!(

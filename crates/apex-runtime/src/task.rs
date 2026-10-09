@@ -99,7 +99,12 @@ impl EventSink for TaskSink {
     fn emit(&self, kind: EventKind) {
         match self.store.append_event(&self.task_id, kind) {
             Ok(event) => {
-                if self.store.event_count(&self.task_id).unwrap_or(0) % 100 == 0 {
+                if self
+                    .store
+                    .event_count(&self.task_id)
+                    .unwrap_or(0)
+                    .is_multiple_of(100)
+                {
                     let _ = self.store.trim_events(&self.task_id, self.max_events);
                 }
                 let _ = self.tx.send(event);
@@ -288,7 +293,7 @@ async fn execute_inner(
     let mut summary;
     let mut failed: Option<String> = None;
 
-    let outcome = runner.run(&agent, input.clone(), &sink, &approver).await?;
+    let outcome = runner.run(agent, input.clone(), &sink, &approver).await?;
     usage.accumulate(&outcome.usage);
     tool_calls += outcome.tool_calls;
     steps += outcome.steps;
@@ -323,7 +328,7 @@ async fn execute_inner(
             prior_messages: outcome.messages.clone(),
             context_notes: Vec::new(),
         };
-        let repair_outcome = runner.run(&agent, input.clone(), &sink, &approver).await?;
+        let repair_outcome = runner.run(agent, input.clone(), &sink, &approver).await?;
         usage.accumulate(&repair_outcome.usage);
         tool_calls += repair_outcome.tool_calls;
         steps += repair_outcome.steps;

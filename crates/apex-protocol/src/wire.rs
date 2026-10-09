@@ -73,6 +73,10 @@ pub enum Request {
 }
 
 /// A runtime response.
+///
+/// Task lists, event batches and diffs are boxed because they are far larger
+/// than the other variants. This keeps `Response` — and therefore every frame
+/// on the wire — small.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Response {
@@ -83,20 +87,20 @@ pub enum Response {
     },
     Ok,
     Task {
-        task: Task,
+        task: Box<Task>,
     },
     TaskList {
-        tasks: Vec<Task>,
+        tasks: Box<Vec<Task>>,
     },
     Events {
-        events: Vec<Event>,
+        events: Box<Vec<Event>>,
         last_seq: i64,
     },
     Agents {
         agents: Vec<AgentSummary>,
     },
     Diff {
-        diff: String,
+        diff: Box<String>,
     },
     Verification {
         passed: bool,

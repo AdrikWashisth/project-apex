@@ -36,18 +36,24 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
             mode,
         } => {
             let task = runtime.create_task(objective, project_root, model, agent_id, mode)?;
-            Ok(Response::Task { task })
+            Ok(Response::Task {
+                task: Box::new(task),
+            })
         }
         Request::ListTasks { limit } => {
             let tasks = runtime.store.list_tasks(limit.unwrap_or(50) as usize)?;
-            Ok(Response::TaskList { tasks })
+            Ok(Response::TaskList {
+                tasks: Box::new(tasks),
+            })
         }
         Request::ShowTask { task_id } => {
             let task = runtime
                 .store
                 .get_task(&task_id)?
                 .ok_or_else(|| ApexError::Storage(format!("task {task_id} not found")))?;
-            Ok(Response::Task { task })
+            Ok(Response::Task {
+                task: Box::new(task),
+            })
         }
         Request::SendInstruction {
             task_id,
@@ -60,7 +66,10 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
             let after = after_seq.unwrap_or(0);
             let events = runtime.store.events_after(&task_id, after)?;
             let last_seq = events.last().map(|e| e.seq).unwrap_or(after);
-            Ok(Response::Events { events, last_seq })
+            Ok(Response::Events {
+                events: Box::new(events),
+                last_seq,
+            })
         }
         Request::ListAgents => Ok(Response::Agents {
             agents: runtime.agents(),
@@ -90,7 +99,9 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
         }
         Request::GetDiff { task_id } => {
             let diff = runtime.diff_for(&task_id).await?;
-            Ok(Response::Diff { diff })
+            Ok(Response::Diff {
+                diff: Box::new(diff),
+            })
         }
         Request::Verify { task_id } => {
             let (passed, checks) = runtime.verify_for(&task_id).await?;

@@ -187,6 +187,21 @@ verification, persistent runtime) are implemented and tested. Multi-agent
 orchestration, the IDE extension and the agent registry are on the roadmap and
 are **not** yet available — the roadmap marks exactly where the boundary is.
 
+The `extensions/vscode/` directory is a manifest skeleton, not a working
+extension.
+
+## Development
+
+```bash
+cargo test --workspace          # unit + integration suites
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+The test suite deliberately uses a deterministic offline provider for the model,
+but every filesystem write, Git call and compiler invocation is real. The
+end-to-end test compiles the file it creates with an actual `rustc`.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

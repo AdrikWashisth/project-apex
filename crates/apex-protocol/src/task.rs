@@ -40,10 +40,11 @@ impl TaskStatus {
 }
 
 /// How a task is executed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     /// A single agent performs the task end to end.
+    #[default]
     Single,
     /// The user assigns work to selected agents.
     ManualMulti,
@@ -51,12 +52,6 @@ pub enum ExecutionMode {
     Orchestrated,
     /// Agents execute a user-defined sequence or graph.
     Workflow,
-}
-
-impl Default for ExecutionMode {
-    fn default() -> Self {
-        ExecutionMode::Single
-    }
 }
 
 /// A persisted task record.

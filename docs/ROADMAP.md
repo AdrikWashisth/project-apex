@@ -59,11 +59,26 @@ complete when the code exists, compiles, is tested and works.
 
 - Runtime binds a local listener and publishes a connection-info file.
 - Versioned, newline-delimited JSON protocol with request/response/event frames.
+- Request ids are correlated on every response, including the handshake.
 - CLI is a pure client: no agent logic, no model calls, no separate history.
 - Tasks survive client disconnection; clients reconnect and replay events by
   sequence number.
 - Runtime restart marks in-flight tasks as interrupted instead of losing them.
+- Shutdown signals cancellation to running executors before dropping handles.
 - Approval board for gated actions, with deny-on-timeout.
+
+### Testing
+
+The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
+
+| Suite | Covers |
+| --- | --- |
+| Unit tests | config, manifests, protocol encoding, storage, tools |
+| `e2e_vertical_slice` | scripted provider makes real file changes in a real Git repo, verified by a real `rustc` invocation; permission denial |
+| `runtime_ipc` | real socket: handshake, bad-token rejection, task creation, event streaming, reconnect replay |
+| `runtime_lifecycle` | cancellation, shutdown ordering, crash recovery, mode rejection |
+| `security_regression` | path traversal, `.git` protection, permission profiles, no-shell |
+| `shipped_manifests` | the manifests in `agents/` are parsed by the real validator |
 
 ### Partial: memory and lessons
 

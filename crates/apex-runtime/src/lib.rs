@@ -145,7 +145,7 @@ impl Runtime {
             .tasks
             .get(task_id)
             .map(|h| h.cancel.clone())
-            .unwrap_or_else(CancellationToken::new)
+            .unwrap_or_default()
     }
 
     /// Whether a task is currently running in this runtime.
@@ -155,10 +155,6 @@ impl Runtime {
 
     fn finish_task(&self, task_id: &str) {
         self.inner.lock().unwrap().tasks.remove(task_id);
-    }
-
-    fn finish_task_public(&self, task_id: &str) {
-        self.finish_task(task_id);
     }
 
     /// Create and start a new task.
@@ -332,15 +328,20 @@ impl Runtime {
         Ok(self.approvals.resolve(approval_id, approved))
     }
 
-    /// Trigger graceful shutdown: cancel tasks and remove the connection info.
+    /// Trigger graceful shutdown: cancel running tasks and remove the
+    /// connection info.
+    ///
+    /// Cancellation signals must be delivered *before* the handles are
+    /// dropped, otherwise the executors never observe the cancellation.
     pub fn shutdown(&self) {
-        let ids: Vec<String> = self.inner.lock().unwrap().tasks.keys().cloned().collect();
-        for id in &ids {
-            self.finish_task_public(id);
+        let tokens: Vec<CancellationToken> = {
+            let inner = self.inner.lock().unwrap();
+            inner.tasks.values().map(|h| h.cancel.clone()).collect()
+        };
+        for token in tokens {
+            token.cancel();
         }
-        for id in ids {
-            let _ = self.cancel_task(&id);
-        }
+        self.inner.lock().unwrap().tasks.clear();
         self.shutdown.cancel();
         if let Ok(path) = transport::runtime_info_path() {
             let _ = std::fs::remove_file(path);

@@ -13,6 +13,10 @@ out*.txt
 t_*.txt
 final.txt
 build.log
+clippy.txt
+lc.txt
+m.txt
+s.txt
 
 # Local tooling / editor config that is not part of the project
 /.opencode/

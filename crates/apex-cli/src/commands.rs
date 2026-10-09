@@ -71,7 +71,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&agents)?);
                 } else {
-                    println!("{:<16} {:<10} {}", "ID", "VERSION", "NAME");
+                    println!("{:<16} {:<10} NAME", "ID", "VERSION");
                     for agent in agents {
                         println!("{:<16} {:<10} {}", agent.id, agent.version, agent.name);
                     }
@@ -231,7 +231,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
 async fn run_task(
     client: &mut apex_runtime::client::Client,
     objective: &str,
-    project_root: &PathBuf,
+    project_root: &std::path::Path,
     model: Option<String>,
     agent: Option<String>,
     wait: bool,
@@ -317,10 +317,10 @@ async fn stream_until_terminal(
                 after_seq: Some(after),
             })
             .await?;
-        let Response::Events { events, last_seq } = response else {
+        let Response::Events { events, .. } = response else {
             bail!("unexpected response fetching events");
         };
-        for event in &events {
+        for event in events.iter() {
             after = event.seq;
             if json {
                 println!("{}", serde_json::to_string(event)?);
@@ -343,8 +343,10 @@ async fn stream_until_terminal(
         if task.status.is_terminal() {
             return Ok(());
         }
-        if events.is_empty() || events.len() as i64 == last_seq - after + (last_seq - after) {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+        // No new events yet: pause briefly before polling again so we do not
+        // spin the runtime while the agent is thinking.
+        if events.is_empty() {
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 }
@@ -364,12 +366,9 @@ async fn task_command(
                 if json {
                     println!("{}", serde_json::to_string_pretty(&tasks)?);
                 } else {
-                    println!(
-                        "{:<22} {:<12} {:<10} {}",
-                        "ID", "STATUS", "PROJECT", "OBJECTIVE"
-                    );
-                    for task in tasks {
-                        println!("{}", render::render_task_line(&task));
+                    println!("{:<22} {:<12} {:<10} OBJECTIVE", "ID", "STATUS", "PROJECT");
+                    for task in tasks.iter() {
+                        println!("{}", render::render_task_line(task));
                     }
                 }
             }
@@ -396,7 +395,7 @@ async fn task_command(
                 else {
                     bail!("unexpected response");
                 };
-                for event in &events {
+                for event in events.iter() {
                     let line = render::render_event(event);
                     if !line.trim().is_empty() {
                         println!("{line}");

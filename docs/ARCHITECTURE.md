@@ -96,7 +96,11 @@ the runtime logs a warning and falls back to loopback TCP.
 - `event` — an unsolicited task event pushed to subscribed clients
 
 Requests are tagged by an `op` field. The handshake is mandatory and validates
-both the protocol version and the connection token.
+both the protocol version and the connection token. Every response echoes the
+request id, including the handshake response, so a client can always correlate.
+
+Large payloads (`Task`, task lists, event batches, diffs) are boxed inside
+`Response` so a `Frame` stays small regardless of what it carries.
 
 ## Task lifecycle
 

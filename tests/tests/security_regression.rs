@@ -10,10 +10,12 @@ use apex_tools::{ToolContext, ToolRegistry};
 use serde_json::json;
 
 fn ctx(root: &std::path::Path, profile: PermissionProfile) -> ToolContext {
-    let mut permissions = Permissions::default();
-    permissions.profile = profile;
-    permissions.allow_shell = true;
-    permissions.require_approval.clear();
+    let permissions = Permissions {
+        profile,
+        allow_shell: true,
+        require_approval: Vec::new(),
+        ..Default::default()
+    };
     ToolContext::new(root.to_path_buf(), permissions)
 }
 
@@ -130,9 +132,12 @@ async fn read_only_profile_blocks_every_mutating_and_executing_tool() {
 async fn shell_can_be_disabled_independently_of_the_profile() {
     let tmp = tempfile::tempdir().unwrap();
     let registry = ToolRegistry::default_set();
-    let mut permissions = Permissions::default();
-    permissions.profile = PermissionProfile::ControlledAutonomous;
-    permissions.allow_shell = false;
+    let permissions = Permissions {
+        profile: PermissionProfile::ControlledAutonomous,
+        allow_shell: false,
+        require_approval: Vec::new(),
+        ..Default::default()
+    };
     let ctx = ToolContext::new(tmp.path().to_path_buf(), permissions);
 
     let err = registry

@@ -6,10 +6,9 @@ use std::path::Path;
 
 /// Create a configuration wired to a deterministic offline provider.
 pub fn offline_config() -> Config {
-    let mut config = Config::default();
-    config.default_model = Some("scripted/model".into());
-    config.providers.insert(
-        "scripted".into(),
+    let mut providers = std::collections::BTreeMap::new();
+    providers.insert(
+        "scripted".to_string(),
         ProviderConfig {
             kind: ProviderKind::Fake,
             base_url: "http://local".into(),
@@ -18,7 +17,11 @@ pub fn offline_config() -> Config {
             default_model: Some("model".into()),
         },
     );
-    config
+    Config {
+        default_model: Some("scripted/model".into()),
+        providers,
+        ..Default::default()
+    }
 }
 
 /// Initialise a real Git repository in `dir` with one commit.

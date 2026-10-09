@@ -37,11 +37,12 @@ async fn full_vertical_slice_with_repair_and_persistence() -> Result<()> {
     // --- Configure a runtime that uses our scripted provider ---
     let mut config = offline_config();
     // Allow writes + shell, and do not require approval so the loop runs unattended.
-    let mut permissions = Permissions::default();
-    permissions.profile = PermissionProfile::ControlledAutonomous;
-    permissions.allow_shell = true;
-    permissions.require_approval.clear();
-    config.permissions = permissions;
+    config.permissions = Permissions {
+        profile: PermissionProfile::ControlledAutonomous,
+        allow_shell: true,
+        require_approval: Vec::new(),
+        ..Default::default()
+    };
 
     let store = Arc::new(Store::open_in_memory()?);
     let runtime = Runtime::new(config, store.clone())?;
@@ -145,9 +146,7 @@ async fn read_only_profile_blocks_writes_through_the_runtime() -> Result<()> {
     let repo = tmp.path().to_path_buf();
 
     let mut config = offline_config();
-    let mut permissions = Permissions::default();
-    permissions.profile = PermissionProfile::ReadOnly;
-    config.permissions = permissions;
+    config.permissions.profile = PermissionProfile::ReadOnly;
 
     let store = Arc::new(Store::open_in_memory()?);
     let runtime = Runtime::new(config, store.clone())?;

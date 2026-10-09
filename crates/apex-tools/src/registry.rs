@@ -107,8 +107,10 @@ mod tests {
     #[tokio::test]
     async fn read_only_profile_blocks_writes() {
         let registry = ToolRegistry::default_set();
-        let mut permissions = apex_core::config::Permissions::default();
-        permissions.profile = PermissionProfile::ReadOnly;
+        let permissions = apex_core::config::Permissions {
+            profile: PermissionProfile::ReadOnly,
+            ..Default::default()
+        };
         let ctx = ToolContext::new(std::env::temp_dir(), permissions);
         let err = registry
             .execute(
