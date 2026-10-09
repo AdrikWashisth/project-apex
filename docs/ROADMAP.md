@@ -13,7 +13,7 @@ complete when the code exists, compiles, is tested and works.
 | 3 — Verification | **Done** | Outcome contracts, real build/test/diff checks, bounded repair loop |
 | 4 — Persistent local runtime | **Done** | Session manager, versioned IPC, task lifetime independent of client, reconnection |
 | 5 — Multi-agent execution | **Done** | Plans, dependency scheduling, conflict avoidance, teams, workflows, handoff |
-| 6 — IDE extension | **Not started** | Protocol is stable and ready for a VS Code client |
+| 6 — IDE extension | **Partial** | Extension written and type-checked; never launched in VS Code |
 | 7 — Agent creation and registry | **Partial** | Manifest format and validation exist; installation and registry do not |
 | 8 — Memory and Kaizen | **Partial** | Scoped notes and lesson capture exist; evaluation and promotion do not |
 | 9 — Production readiness | **Not started** | See the hardening list below |
@@ -104,13 +104,31 @@ The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
 - Scoped notes (project / agent / user) persisted in SQLite.
 - Verification repair outcomes recorded as project lessons.
 
-## Next: Milestone 6 — IDE extension
+## Next: Milestone 6 — IDE extension (frontend written, unverified)
 
-- VS Code extension that detects the CLI, checks protocol compatibility, and
-  connects to the running runtime.
-- Conversation, plan, tool-activity and diff views.
-- Approval and cancellation controls.
-- Bidirectional continuity: start in the IDE, resume in the CLI, same task id.
+- `extensions/vscode/` implements the frontend in TypeScript:
+  - `client.ts` — wire protocol with request correlation and event fan-out
+  - `runtime.ts` — discovery, handshake, protocol-version check, autostart
+  - `tree.ts` — tasks and plan/subtasks grouped by scheduling wave
+  - `approval.ts` — gated actions as modal prompts
+  - `diff.ts`, `extension.ts` — editor diff view and wiring
+- It contains no agent logic; every action is a protocol message.
+- **Honest status:** the extension passes `tsc --noEmit` and compiles to
+  JavaScript, but it has never been launched inside VS Code on this machine.
+  Treat it as unverified until someone runs it in the editor.
+
+Remaining for this milestone:
+- Launch it in VS Code and confirm the views render.
+- Bidirectional continuity test: start a task in the IDE, resume it from the
+  CLI, confirm exactly one task.
+- Live event streaming into the tree views (currently polled).
+
+### Also delivered alongside Milestone 6
+
+- **`apex tui`** — a ratatui terminal interface over the same runtime.
+- **One-shot installer** — `install.sh` and `install.ps1`.
+- **Honest parallelism** — `--parallel` refuses unsafe teams instead of
+  silently serialising them.
 
 ## Next: Milestone 7 — Agent registry
 

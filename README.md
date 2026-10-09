@@ -328,4 +328,4 @@ end-to-end test compiles the file it creates with an actual `rustc`.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+GPL-3.0-only. See [LICENSE](LICENSE).
