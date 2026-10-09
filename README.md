@@ -305,14 +305,40 @@ including the fact that APEX does not sandbox agent processes at the OS level.
 
 This is an early, actively developed project. Milestones 1–5 (CLI, agent runtime,
 verification, persistent runtime, multi-agent execution) are implemented and
-tested. The IDE extension, the agent registry and controlled self-improvement
-are on the roadmap and are **not** yet available — the roadmap marks exactly
-where the boundary is.
+tested. The agent registry and controlled self-improvement are on the roadmap
+and are **not** yet available — the roadmap marks exactly where the boundary is.
 
-The `extensions/vscode/` directory is a manifest skeleton, not a working
-extension. Model-driven `orchestrated` mode is accepted and validated by the
-protocol, but no planner ships yet: supplying a plan works, omitting one fails
-with a clear error.
+The VS Code extension is **partially** done, and the split matters:
+
+- Its protocol client is verified against a real running runtime. A test starts
+  an actual APEX runtime and drives the compiled extension client through the
+  handshake, task/agent/status requests and interleaved request correlation.
+  This caught two bugs that type-checking could not: the client never sent its
+  `Hello` frame, and it had no handshake timeout.
+- **It has never been launched inside VS Code.** The views, approval modals and
+  diff view are unexercised. Do not assume the UI works.
+
+Model-driven `orchestrated` mode is accepted and validated by the protocol, but
+no planner ships yet: supplying a plan works, omitting one fails with a clear
+error.
+
+### Verifying the extension yourself
+
+```bash
+apex runtime                  # in another terminal — starts the daemon
+cd extensions/vscode
+npm install
+npx tsc -p ./                 # compiles the extension to out/
+
+# Drive the compiled client against the live runtime:
+node scripts/probe.js $(jq -r .endpoint ~/.apex/state/runtime.json) \
+                    $(jq -r .token    ~/.apex/state/runtime.json)
+```
+
+It prints one line per check and exits non-zero on the first failure.
+
+`cargo test --workspace` runs that probe for you when the extension has been
+compiled, and skips with an explanatory message when it has not.
 
 ## Development
 

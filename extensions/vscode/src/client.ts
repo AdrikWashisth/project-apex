@@ -34,6 +34,9 @@ type Frame = RequestEnvelope | ResponseEnvelope | EventEnvelope;
 
 type Pending = (response: unknown) => void;
 
+/** How long to wait for the runtime's handshake answer before giving up. */
+const HANDSHAKE_TIMEOUT_MS = 10_000;
+
 /**
  * Connected APEX runtime client.
  *
@@ -64,7 +67,6 @@ export class ApexClient extends EventEmitter {
         this.cleanup();
         reject(error);
       };
-
       const socket = this.openSocket();
       this.socket = socket;
       socket.once("error", onError);
@@ -75,8 +77,37 @@ export class ApexClient extends EventEmitter {
         this.emit("disconnect");
       });
 
-      // Handshake is the first thing on the wire, so wait for a clean read.
-      const onData = (chunk: Buffer) => {
+      // The runtime requires a hello as the very first frame, so send it
+      // immediately and then wait for the matching response.
+      const handshakeId = this.nextId++;
+      const payload =
+        JSON.stringify({
+          frame: "request",
+          id: handshakeId,
+          request: hello(this.info.token),
+        }) + "\n";
+      socket.write(payload, (error) => {
+        if (error) {
+          this.cleanup();
+          reject(error);
+        }
+      });
+
+      // A listener that accepts but never answers must not hang the editor
+      // forever on a silent "connecting..." state.
+      const timer = setTimeout(() => {
+        socket.off("data", onData);
+        socket.off("error", onError);
+        this.cleanup();
+        reject(
+          new Error(
+            `no handshake response from ${this.info.endpoint} within 10s — is that really an APEX runtime?`
+          )
+        );
+      }, HANDSHAKE_TIMEOUT_MS);
+      timer.unref?.();
+
+      const onData = (chunk: Buffer): void => {
         this.buffer += chunk.toString("utf8");
         const newline = this.buffer.indexOf("\n");
         if (newline < 0) {
@@ -86,6 +117,7 @@ export class ApexClient extends EventEmitter {
         this.buffer = this.buffer.slice(newline + 1);
         socket.off("data", onData);
         socket.off("error", onError);
+        clearTimeout(timer);
 
         let frame: Frame;
         try {
@@ -95,7 +127,7 @@ export class ApexClient extends EventEmitter {
           reject(new Error(`malformed handshake frame: ${String(error)}`));
           return;
         }
-        if (frame.frame !== "response") {
+        if (frame.frame !== "response" || frame.id !== handshakeId) {
           this.cleanup();
           reject(new Error("expected a handshake response"));
           return;

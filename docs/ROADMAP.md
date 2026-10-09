@@ -13,7 +13,7 @@ complete when the code exists, compiles, is tested and works.
 | 3 — Verification | **Done** | Outcome contracts, real build/test/diff checks, bounded repair loop |
 | 4 — Persistent local runtime | **Done** | Session manager, versioned IPC, task lifetime independent of client, reconnection |
 | 5 — Multi-agent execution | **Done** | Plans, dependency scheduling, conflict avoidance, teams, workflows, handoff |
-| 6 — IDE extension | **Partial** | Extension written and type-checked; never launched in VS Code |
+| 6 — IDE extension | **Partial** | Protocol client verified against a live runtime; UI never launched |
 | 7 — Agent creation and registry | **Partial** | Manifest format and validation exist; installation and registry do not |
 | 8 — Memory and Kaizen | **Partial** | Scoped notes and lesson capture exist; evaluation and promotion do not |
 | 9 — Production readiness | **Not started** | See the hardening list below |
@@ -104,7 +104,7 @@ The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
 - Scoped notes (project / agent / user) persisted in SQLite.
 - Verification repair outcomes recorded as project lessons.
 
-## Next: Milestone 6 — IDE extension (frontend written, unverified)
+## Next: Milestone 6 — IDE extension (protocol verified, UI unverified)
 
 - `extensions/vscode/` implements the frontend in TypeScript:
   - `client.ts` — wire protocol with request correlation and event fan-out
@@ -113,9 +113,33 @@ The suite runs with `cargo test --workspace` and gates on clippy `-D warnings`.
   - `approval.ts` — gated actions as modal prompts
   - `diff.ts`, `extension.ts` — editor diff view and wiring
 - It contains no agent logic; every action is a protocol message.
-- **Honest status:** the extension passes `tsc --noEmit` and compiles to
-  JavaScript, but it has never been launched inside VS Code on this machine.
-  Treat it as unverified until someone runs it in the editor.
+
+### What is verified
+
+The protocol layer is tested against a **real running runtime**, not a mock.
+`client.ts` imports only Node builtins, so `tests/tests/extension_client.rs`
+starts an actual APEX runtime and drives the compiled extension client against
+it, asserting 10 protocol checks: handshake, runtime version, `list_tasks`,
+`list_agents`, `status`, interleaved request correlation, and that the
+connection survives the whole sequence.
+
+This caught two real bugs that type-checking alone could not:
+
+1. **The client never sent `Hello`.** It waited for a handshake response that
+   was never requested, so the extension would have hung on connect forever.
+2. **No handshake timeout.** A listener that accepts but never answers left the
+   editor on a silent "connecting…" indefinitely. It now fails after 10s with a
+   message naming the endpoint.
+
+The probe is also checked against deliberately broken inputs (a refused
+connection, and a silent listener) to confirm it can actually fail — a test that
+cannot fail is not evidence.
+
+### What is still unverified
+
+**The extension has never been launched inside VS Code on this machine.** The
+views, the approval modals and the diff view are unexercised. Treat the UI layer
+as unverified until someone runs it in the editor.
 
 Remaining for this milestone:
 - Launch it in VS Code and confirm the views render.
