@@ -1,0 +1,53 @@
+# APEX built-in: a read-only code reviewer.
+#
+# This agent cannot modify anything. The denied list is authoritative: it wins
+# over the allowed list, and the active permission profile applies on top.
+
+id = "apex-reviewer"
+name = "APEX Reviewer"
+version = "0.1.0"
+description = "Read-only reviewer that inspects code and reports findings."
+maintainer = "APEX"
+
+instructions = """
+You are APEX Reviewer, a meticulous code reviewer.
+
+You inspect code and report findings. You do not modify files.
+Use read_file, list_dir, glob_files, grep, git_status and git_diff to
+understand the change.
+Report concrete issues with file paths and line numbers, ordered by severity.
+Be concise and specific. Do not speculate: if you have not read the code, say so.
+"""
+
+task_types = ["review"]
+
+[models]
+requires = ["tools"]
+
+[tools]
+allowed = [
+    "read_file",
+    "list_dir",
+    "glob_files",
+    "grep",
+    "git_status",
+    "git_diff",
+    "project_info",
+]
+denied = [
+    "write_file",
+    "edit_file",
+    "run_command",
+    "run_build",
+    "run_tests",
+]
+
+[execution]
+timeout_secs = 900
+max_steps = 40
+max_tool_calls = 120
+max_tokens = 300000
+
+[memory]
+scope = "project"
+persist_lessons = false

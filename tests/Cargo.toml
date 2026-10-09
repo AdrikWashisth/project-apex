@@ -1,0 +1,29 @@
+[package]
+name = "apex-tests"
+description = "End-to-end and cross-crate integration tests for APEX."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+path = "lib.rs"
+doctest = false
+
+[dependencies]
+apex-agent.workspace = true
+apex-core.workspace = true
+apex-memory.workspace = true
+apex-models.workspace = true
+apex-protocol.workspace = true
+apex-runtime.workspace = true
+apex-tools.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+shell-words.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

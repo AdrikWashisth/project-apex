@@ -1,0 +1,18 @@
+/target
+**/*.rs.bk
+*.pdb
+.apex/
+.env
+.env.*
+!.env.example
+node_modules/
+extensions/vscode/out/
+extensions/vscode/*.vsix
+*.log
+out*.txt
+t_*.txt
+final.txt
+build.log
+
+# Local tooling / editor config that is not part of the project
+/.opencode/

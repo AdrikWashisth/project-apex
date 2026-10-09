@@ -1,0 +1,79 @@
+# Example APEX configuration.
+#
+# Copy this file to `~/.apex/config/config.toml` for user-wide settings, or to
+# `<project>/.apex/config.toml` for per-project settings. Project config is
+# merged over user config, so you only need to state what differs.
+#
+# Environment overrides (highest precedence):
+#   APEX_DEFAULT_MODEL       e.g. openai/gpt-4o-mini
+#   APEX_BASE_URL            override the default provider base URL
+#   APEX_PERMISSION_PROFILE  read_only | assisted | controlled_autonomous | advanced
+
+# --- default model -------------------------------------------------------
+# Referenced as `provider/model`. Must name a provider defined below.
+# default_model = "openai/gpt-4o-mini"
+
+
+# --- providers -----------------------------------------------------------
+# Every model APEX can talk to. `kind` selects the adapter:
+#   openai_compatible -> any /chat/completions endpoint (OpenAI, local servers)
+#   fake              -> deterministic offline provider (tests and demos)
+
+# [providers.openai]
+# kind = "openai_compatible"
+# base_url = "https://api.openai.com/v1"
+# api_key_env = "OPENAI_API_KEY"     # name of the env var, never the key itself
+# models = ["gpt-4o-mini", "gpt-4o"]
+# default_model = "gpt-4o-mini"
+
+# A local model server (Ollama, LM Studio, vLLM, llama.cpp server, ...):
+# [providers.local_llm]
+# kind = "openai_compatible"
+# base_url = "http://127.0.0.1:11434/v1"
+# api_key_env = "LOCAL_LLM_KEY"      # usually unset; set it to anything
+# models = ["llama3.1"]
+
+# Offline provider for trying APEX without credentials. It cannot do real work
+# and tasks using it will fail verification by design.
+# [providers.local]
+# kind = "fake"
+# base_url = "http://localhost"
+# models = ["offline"]
+
+
+# --- budgets -------------------------------------------------------------
+# Hard limits per task. Checked before work starts, not reported afterwards.
+
+# [budget]
+# max_model_tokens = 500000
+# max_cost_usd = 5.0
+# max_tool_calls = 200
+# max_wall_secs = 1800
+# max_repair_attempts = 3      # bounded diagnose-and-repair loop
+# max_steps = 60
+
+
+# --- permissions ---------------------------------------------------------
+# read_only             -> only read-only tools
+# assisted              -> default; reads, writes, shell gated by allow_shell
+# controlled_autonomous -> autonomous inside the workspace, still bounded
+# advanced              -> user-configured autonomy, still audited
+
+# [permissions]
+# profile = "assisted"
+# allow_shell = true
+# require_approval = ["destructive"]
+
+
+# --- runtime -------------------------------------------------------------
+# [runtime]
+# transport = "local_socket"     # unix socket, or loopback TCP elsewhere
+# autostart = true
+# idle_shutdown_secs = 3600
+
+
+# --- memory --------------------------------------------------------------
+# [memory]
+# enabled = true
+# retention_days = 90
+# max_events_per_task = 10000

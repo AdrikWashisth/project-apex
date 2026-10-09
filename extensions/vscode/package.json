@@ -1,0 +1,51 @@
+{
+  "name": "apex-vscode",
+  "displayName": "APEX",
+  "description": "APEX agentic software engineering, powered by the local APEX runtime.",
+  "version": "0.1.0",
+  "publisher": "apex-ai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "apex",
+          "title": "APEX",
+          "icon": "resources/apex.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "apex.connect",
+        "title": "APEX: Connect to Runtime"
+      },
+      {
+        "command": "apex.newTask",
+        "title": "APEX: New Task"
+      },
+      {
+        "command": "apex.resumeTask",
+        "title": "APEX: Resume Task"
+      },
+      {
+        "command": "apex.cancelTask",
+        "title": "APEX: Cancel Task"
+      },
+      {
+        "command": "apex.showDiff",
+        "title": "APEX: Show Diff"
+      }
+    ]
+  }
+}

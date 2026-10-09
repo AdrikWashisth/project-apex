@@ -1,0 +1,31 @@
+[package]
+name = "apex-cli"
+description = "The APEX command-line interface."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "apex"
+path = "src/main.rs"
+
+[dependencies]
+apex-core.workspace = true
+apex-memory.workspace = true
+apex-runtime.workspace = true
+apex-protocol.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
