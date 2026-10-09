@@ -45,7 +45,10 @@ async fn requests_still_complete_while_a_task_streams_events() -> Result<()> {
             model: None,
             agent_id: None,
             mode: apex_protocol::ExecutionMode::ManualMulti,
-            team: Some(apex_protocol::TeamSpec::new(["apex-default", "apex-reviewer"])),
+            team: Some(apex_protocol::TeamSpec::new([
+                "apex-default",
+                "apex-reviewer",
+            ])),
             plan: None,
             workflow: None,
         }),
@@ -59,17 +62,23 @@ async fn requests_still_complete_while_a_task_streams_events() -> Result<()> {
     // While events flow, keep issuing requests on the SAME connection. Each one
     // must return; previously these hung once the stream desynchronised.
     for round in 0..25 {
-        let response = tokio::time::timeout(T, client.request(Request::TaskEvents {
-            task_id: task.id.clone(),
-            after_seq: None,
-        }))
+        let response = tokio::time::timeout(
+            T,
+            client.request(Request::TaskEvents {
+                task_id: task.id.clone(),
+                after_seq: None,
+            }),
+        )
         .await
         .unwrap_or_else(|_| panic!("round {round}: TaskEvents request timed out"))?;
         assert!(matches!(response, Response::Events { .. }));
 
-        let response = tokio::time::timeout(T, client.request(Request::ShowTask {
-            task_id: task.id.clone(),
-        }))
+        let response = tokio::time::timeout(
+            T,
+            client.request(Request::ShowTask {
+                task_id: task.id.clone(),
+            }),
+        )
         .await
         .unwrap_or_else(|_| panic!("round {round}: ShowTask request timed out"))?;
         assert!(matches!(response, Response::Task { .. }));
@@ -115,9 +124,12 @@ async fn pipelined_requests_are_answered_in_order() -> Result<()> {
 
     let mut client = Client::connect(&info).await?;
     for round in 0..10 {
-        let response = tokio::time::timeout(T, client.request(Request::ListTasks {
-            limit: Some((round + 1) as u32),
-        }))
+        let response = tokio::time::timeout(
+            T,
+            client.request(Request::ListTasks {
+                limit: Some((round + 1) as u32),
+            }),
+        )
         .await
         .unwrap_or_else(|_| panic!("round {round}: request timed out"))?;
         assert!(matches!(response, Response::TaskList { .. }));

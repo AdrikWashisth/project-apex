@@ -170,8 +170,11 @@ pub async fn dispatch(runtime: &Arc<Runtime>, request: Request) -> Result<Respon
 }
 
 /// What the per-connection reader task reports back to the handler.
+///
+/// `Frame` is boxed because it dwarfs the other variants; keeping this enum
+/// small matters because one instance is moved through a channel per frame.
 enum ReadOutcome {
-    Frame(Frame),
+    Frame(Box<Frame>),
     /// The peer closed the connection cleanly.
     Closed,
     Error(String),
@@ -316,7 +319,7 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
         loop {
             match read_frame(&mut reader).await {
                 Ok(Some(frame)) => {
-                    if frame_tx.send(ReadOutcome::Frame(frame)).is_err() {
+                    if frame_tx.send(ReadOutcome::Frame(Box::new(frame))).is_err() {
                         return;
                     }
                 }
@@ -352,7 +355,12 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
 
             outcome = frame_rx.recv() => {
                 match outcome {
-                    Some(ReadOutcome::Frame(Frame::Request { id, request })) => {
+                    Some(ReadOutcome::Frame(frame)) => {
+                        // Clients only ever send requests; anything else on the
+                        // wire is ignored rather than treated as fatal.
+                        let Frame::Request { id, request } = *frame else {
+                            continue;
+                        };
                         runtime.touch();
                         let subscribe_to = match &request {
                             Request::TaskEvents { task_id, .. } => Some(task_id.clone()),
@@ -373,7 +381,6 @@ async fn handle_connection(runtime: Arc<Runtime>, stream: DynStream) -> Result<(
                             break Ok(());
                         }
                     }
-                    Some(ReadOutcome::Frame(_)) => {}
                     Some(ReadOutcome::Closed) => break Ok(()),
                     Some(ReadOutcome::Error(message)) => {
                         tracing::debug!(error = %message, "frame read error");
